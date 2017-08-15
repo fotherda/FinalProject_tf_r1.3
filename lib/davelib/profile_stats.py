@@ -88,6 +88,20 @@ class ProfileStats(object):
     other_total = getattr( getattr(other, statsname), attrname)
     this_total = getattr( getattr(self, statsname), attrname)
     return (this_total - other_total)/other_total
+     
+  def total_bytes_count_delta(self, other):   
+    other_total = other._param_stats.total_requested_bytes + \
+                  other._perf_stats.total_requested_bytes
+    this_total = self._param_stats.total_requested_bytes + \
+                  self._perf_stats.total_requested_bytes
+    return  this_total - other_total
+        
+  def total_bytes_frac_delta(self, other):   
+    other_total = other._param_stats.total_requested_bytes + \
+                  other._perf_stats.total_requested_bytes
+    this_total = self._param_stats.total_requested_bytes + \
+                  self._perf_stats.total_requested_bytes
+    return (this_total - other_total)/other_total
         
   def serialize_data(self, graph, run_metadata_list):
     devnull = open(os.devnull, 'w')

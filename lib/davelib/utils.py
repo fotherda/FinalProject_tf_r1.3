@@ -13,10 +13,28 @@ import ctypes
 import io
 import os
 import tempfile
+from davelib.voc_img_sampler import VOCImgSampler
+from model.test import test_net, test_net_with_sample
+from datasets.factory import get_imdb
+
 # from davelib.layer_name import LayerName
 
 
   
+def run_test_metric(num_imgs, net, sess):
+  imdb = get_imdb('voc_2007_test')
+  filename ='default/res101_faster_rcnn_iter_110000'
+  
+  f = io.BytesIO()
+  with stdout_redirector(f): #this stops some meaningless errors on stderr
+    if num_imgs == len(imdb.image_index):
+      mAP = test_net(sess, net, imdb, filename, max_per_image=100)
+    else:
+      sampler = VOCImgSampler()
+      sample_images = sampler.get_imgs(num_imgs)
+      mAP = test_net_with_sample(sess, net, imdb, filename, sample_images, 
+                                 max_per_image=100)
+  return mAP
 
 
 libc = ctypes.CDLL(None)

@@ -63,6 +63,7 @@ class VOCImgSampler:
           return sample_names_dict[num_imgs]
     else:
       print('Can\'t find: ' + sample_file)
+      sample_names = []
       sample_names_dict = {}
       sample_names_dict[num_imgs] = []
           

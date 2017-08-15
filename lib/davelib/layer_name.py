@@ -47,6 +47,13 @@ class LayerName(str):
     
 __COMPRESSIBLE_LAYERS__ = None
 
+
+def print_for_latex():
+  layers = get_all_compressible_layers()
+  for i, layer in enumerate(layers):
+    print('%d & %s \\\\'%(i+1,layer.replace('_',' ')))
+
+
 def get_all_compressible_layers():  
   global __COMPRESSIBLE_LAYERS__
   
@@ -74,6 +81,15 @@ def get_all_compressible_layers():
   __COMPRESSIBLE_LAYERS__.append( LayerName('bbox_pred/weights') ) 
   return __COMPRESSIBLE_LAYERS__
 
+
+def remove_bottleneck_shortcut_layers(layer_names):  
+  filtered = []
+  for v in layer_names:
+    if 'block' not in v:
+      filtered.append(v)
+    elif 'shortcut' not in v:
+      filtered.append(v)
+  return filtered
 
 def remove_bottleneck_1_3_shortcut_layers(layer_names):  
   filtered = []

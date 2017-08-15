@@ -5,14 +5,26 @@ Created on 13 Jul 2017
 '''
 import numpy as np
 import pickle as pi
-import matplotlib as mp
 import matplotlib.pyplot as plt
 import re
 
 from collections import OrderedDict,defaultdict
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, FuncFormatter
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn import linear_model
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn import cross_validation
+from scipy import optimize
+from scipy.optimize import least_squares, minimize
+import pyqt_fit.nonparam_regression as smooth
+from pyqt_fit import npr_methods, plot_fit
+
 from functools import total_ordering
 # from davelib.utils import get_all_compressible_layers
+
+
 
 @total_ordering
 class CompressedNetDescription(dict):
@@ -34,7 +46,7 @@ class CompressedNetDescription(dict):
    
   def __eq__(self, other):
     if isinstance(other, self.__class__):
-        return self.__key() == other.__key()
+      return self.__key() == other.__key()
     return False
   
   def __hash__(self):
@@ -118,6 +130,9 @@ class CompressionStats(object):
     self.set(net_desc, 'micros_'+count_or_frac, func(
                           base_profile_stats, '_perf_stats', 'total_cpu_exec_micros'))
     
+    func = getattr(profile_stats, 'total_bytes_'+count_or_frac)
+    self.set(net_desc, 'total_bytes_'+count_or_frac, func(base_profile_stats))
+    
   def save(self, suffix=None):
     if not suffix:
       suffix = self._filename_suffix
@@ -142,6 +157,12 @@ class CompressionStats(object):
       else:
         self._stats[net_desc] = data_dict
 
+  def calc_profile_stats_all_nets(self):
+    for net_desc in sorted(self._stats):
+      profile_stats = self._stats[net_desc]['profile_stats']
+      base_profile_stats = self._stats[net_desc]['base_profile_stats']
+      self._set_profile_stats(net_desc, profile_stats, base_profile_stats, 'count_delta')
+      self._set_profile_stats(net_desc, profile_stats, base_profile_stats, 'frac_delta')
 
   #only works when each net_desc has 1 compressed layer
   def build_label_layer_K_dict(self):
@@ -154,16 +175,162 @@ class CompressionStats(object):
       for type_label, value in d.items():
         new_dict[type_label][layer][K] = value
     return new_dict
+  
 
-  def plot(self, plot_type_labels=None):
+  
+  def multivar_regress(self):
+    X, y = self.regression_data()
+    X = np.array(X)
+    x = X[:,0]
+    y = np.array(y)
+    
+    k0 = smooth.NonParamRegression(x, y, method=npr_methods.SpatialAverage())
+    k0.fit()
+    
+    grid = np.r_[0:2.5:512j]
+#     plt.plot(grid, f(grid), 'r--', label='Reference')
+    plt.plot(x, y, '.', alpha=0.5, label='Data')
+#     plt.legend(loc='best')
+    
+    plt.plot(grid, k0(grid), label="Spatial Averaging", linewidth=2)
+    plt.legend(loc='best')
+    
+    yopts = k0(x)
+    res = y - yopts
+    plot_fit.plot_residual_tests(x, yopts, res, 'Spatial Average')
+    
+  def multivar_regress4(self):
+    X, y = self.regression_data()
+    X = np.array(X)
+    x = X[:,0]
+    y = np.array(y)
+    
+#     x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ,11, 12, 13, 14, 15], dtype=float)
+#     y = np.array([5, 7, 9, 11, 13, 15, 28.92, 42.81, 56.7, 70.59, 84.47, 98.36, 112.25, 126.14, 140.03])
+
+    def piecewise_linear(x, x0, y0, k1, k2):
+      return np.piecewise(x, [x < x0], [lambda x:k1*x + y0-k1*x0, lambda x:k2*x + y0-k2*x0])
+
+    def fun(params, x, y):
+      x0 = params[0] 
+      y0 = params[1]
+      k1 = params[2] 
+      k2 = params[3]
+      return piecewise_linear(x, x0, y0, k1, k2) - y
+    
+    
+    x0=np.array([1.2,0.74,0.001,-1.0])
+#     res = least_squares(fun, x0, args=(x, y), tr_solver='lsmr', method='dogbox', ftol=1e-16, xtol=1e-16, 
+#                         verbose=2, bounds=([0,0,-1, -5], [2,2,1,0]))
+#     res = least_squares(fun, x0, args=(x, y), verbose=2, tr_solver='lsmr', method='lm')
+#     res = least_squares(fun, x0, loss='soft_l1', f_scale=0.1, args=(x, y), verbose=2)
+    
+#     print(res.x)
+    
+    p, e = optimize.curve_fit(piecewise_linear, x[:20], y[:20], method='trf', tr_solver='lsmr', verbose=2)
+    p, e = optimize.curve_fit(piecewise_linear, x[:10], y[:10])
+    p, e = optimize.curve_fit(piecewise_linear, x[:100], y[:100])
+    xd = np.linspace(0, 15, 100)
+    plt.plot(x, y, ".")
+    plt.plot(xd, piecewise_linear(xd, *p))
+    plt.show()
+  
+  def multivar_regress3(self):
+#     np.random.seed(0)
+# 
+#     n_samples = 30
+    degrees = [1, 4, 15]
+    
+#     true_fun = lambda X: np.cos(1.5 * np.pi * X)
+#     X = np.sort(np.random.rand(n_samples))
+#     y = true_fun(X) + np.random.randn(n_samples) * 0.1
+    
+    X, y = self.regression_data()
+    X = np.array(X)
+    X = X[:,0]
+    
+    plt.figure(figsize=(14, 5))
+    for i in range(len(degrees)):
+        ax = plt.subplot(1, len(degrees), i + 1)
+        plt.setp(ax, xticks=(), yticks=())
+    
+        polynomial_features = PolynomialFeatures(degree=degrees[i],
+                                                 include_bias=False)
+        linear_regression = LinearRegression()
+        pipeline = Pipeline([("polynomial_features", polynomial_features),
+                             ("linear_regression", linear_regression)])
+        pipeline.fit(X[:, np.newaxis], y)
+    
+        # Evaluate the models using crossvalidation
+        scores = cross_validation.cross_val_score(pipeline,
+            X[:, np.newaxis], y, scoring="mean_squared_error", cv=10)
+    
+        X_test = np.linspace(0, 1, 100)
+        plt.plot(X_test, pipeline.predict(X_test[:, np.newaxis]), label="Model")
+#         plt.plot(X_test, true_fun(X_test), label="True function")
+        plt.scatter(X, y, s=1, label="Samples")
+        plt.xlabel("x")
+        plt.ylabel("y")
+#         plt.xlim((0, 1))
+#         plt.ylim((-2, 2))
+        plt.legend(loc="best")
+        plt.title("Degree {}\nMSE = {:.2e}(+/- {:.2e})".format(
+            degrees[i], -scores.mean(), scores.std()))
+    plt.show()
+
+  def regression_data(self):
+    X = []
+    y = []
+    
+    for _, d in self._stats.items():
+      cls_score = d['diff_mean_cls_score']
+      bbox_pred = d['diff_mean_bbox_pred']
+      mAP = d['mAP_100_top150']
+      X.append([cls_score, bbox_pred])
+      y.append(mAP)
+    return X, y
+    
+  def multivar_regress2(self):
+    X, y = self.regression_data()
+    
+    #predict is an independent variable for which we'd like to predict the value
+    predict= [[0.49, 0.18],[3,3],[1.5,1.0]]
+    
+    #generate a model of polynomial features
+    poly = PolynomialFeatures(degree=2)
+    
+    #transform the x data for proper fitting (for single variable type it returns,[1,x,x**2])
+    X_ = poly.fit_transform(X)
+    
+    #transform the prediction to fit the model type
+    predict_ = poly.fit_transform(predict)
+    
+    #here we can remove polynomial orders we don't want
+    #for instance I'm removing the `x` component
+#     X_ = np.delete(X_,(1),axis=1)
+#     predict_ = np.delete(predict_,(1),axis=1)
+    
+    #generate the regression object
+    clf = linear_model.LinearRegression()
+    #preform the actual regression
+    clf.fit(X_, y)
+    
+    print("X_ = ",X_)
+    print("predict_ = ",predict_)
+    print("Prediction = ",clf.predict(predict_))
+    return 2
+
+  def plot(self, plot_data=None, legend_labels=None):
     fig, ax = plt.subplots()
-    plt.title('Reconstruction Error')
+#     plt.title('Reconstruction Error')
+    ax.axhline(y=0, color='k')
+    ax.axvline(x=0, color='k')
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    legend_labels = []
+#     legend_labels = []
     data_dict = self.build_label_layer_K_dict()
     
-    if plot_type_labels:
-      n_rows = len(plot_type_labels)
+    if plot_data:
+      n_rows = len(plot_data)
     else:
       n_rows = len(data_dict)
       
@@ -171,7 +338,11 @@ class CompressionStats(object):
     plt_idx = 1
     layers_names = []
      
-    for type_label in plot_type_labels:
+    for properties in plot_data:
+      
+      type_label = properties[0]
+      y_label = properties[1]
+      percent_fmt = properties[2]
       d = data_dict[type_label]
 #     for i, (type_label, d) in enumerate(sorted(data_dict.items())):
 #       if plot_type_labels and type_label not in plot_type_labels:
@@ -179,7 +350,14 @@ class CompressionStats(object):
       num_layers = len(d)
       num_K = len( list(d.values())[0] )
       plot_data = np.zeros( (num_K, num_layers) )
-      a = plt.subplot(n_rows, n_columns, plt_idx)
+      ax = plt.subplot(n_rows, n_columns, plt_idx)
+      ax.axhline(y=0, color='k', linewidth=0.5, label='_nolegend_')
+#       ax.spines['left'].set_position('zero')
+#       ax.spines['bottom'].set_position('zero')
+      # get rid of the frame
+#       for spine in plt.gca().spines.values():
+#         spine.set_visible(False)
+
       plt_idx += 1
  
       layer_idxs = []
@@ -196,21 +374,25 @@ class CompressionStats(object):
 
       for k, (K, val) in enumerate(sorted(d2.items())):
         if type_label in ['flops_reduced_count']:
-          plt.semilogy(layer_idxs, plot_data[k,:],'.-')
+          plt.semilogy(layer_idxs, plot_data[k,:],'.-', linewidth=0.5, markersize=1.0)
         else:
-          plt.plot(layer_idxs, plot_data[k,:],'.-')
-        legend_labels.append('K=%d'%K)
+          plt.plot(layer_idxs, plot_data[k,:],'.-', linewidth=0.5, markersize=1.0)
+#         legend_labels.append('K=%d'%K)
 #         plt.plot(Ks, plot_data[:,j],'o-')
 #       legend_labels.append(layer)
 #       legend_labels.append(type_label)
 #       plt.plot(range(1,num_layers+1), plot_data[0,:],'ro-')
-      plt.ylabel(type_label)
- 
+      plt.ylabel(y_label)
+      if percent_fmt:
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: '{:.0%}'.format(y))) 
+
+
 #     plt.xlabel('K')
 #       plt.ylabel(type_label)
     plt.xticks(layer_idxs, layers_names, rotation='vertical')
-    
-    plt.legend(legend_labels)
+
+    plt.legend(legend_labels, title=r'fraction of $K_{max}$')
+#     plt.legend(legend_labels)
     plt.xlabel('layer index')
     plt.show()  
 

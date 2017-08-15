@@ -150,7 +150,7 @@ class resnetv1_sep(resnetv1):
           shortcut = layers.conv2d(inputs, depth, [1, 1], stride=stride, activation_fn=None,
                                    scope='shortcut')
         
-
+        
       layer_name = LayerName(sc.name + '/conv1', 'net_layer')
       if layer_name in self._comp_weights_dict.keys():
         residual = self.separate_1x1_conv_layer(inputs, depth_bottleneck, 1, layer_name, scope='conv1')

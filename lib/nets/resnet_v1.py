@@ -303,8 +303,8 @@ class resnetv1(Network):
 
     return rois, cls_prob, bbox_pred
 
-  def separate_1x1_conv_layer(self, inputs, num_outputs, layer_name):
-    return layers.conv2d(inputs, num_outputs, [1, 1], stride=1, scope=layer_name)
+#   def separate_1x1_conv_layer(self, inputs, num_outputs, layer_name):
+#     return layers.conv2d(inputs, num_outputs, [1, 1], stride=1, scope=layer_name)
 
   def rpn_convolution(self, net_conv4, is_training, initializer):
     return slim.conv2d(net_conv4, 512, [3, 3], trainable=is_training, weights_initializer=initializer,

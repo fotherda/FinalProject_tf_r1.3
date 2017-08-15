@@ -4,30 +4,17 @@ Created on 29 Jul 2017
 @author: david
 '''
 import numpy as np
-import os, cv2, sys, io
-import argparse
-import matplotlib as mp
 import matplotlib.pyplot as plt
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
-import math
-import os.path as osp
 
 
-from tensorflow.python.platform import gfile
 from model.config import cfg
 from davelib.resnet_v1_sep import resnetv1_sep
-from model.test import _get_blobs
-from model.test import im_detect
 from davelib.layer_name import LayerName
-from davelib.compression_stats import CompressionStats, CompressedNetDescription
 from tensorflow.python.framework import ops
 from collections import OrderedDict
-from davelib.voc_img_sampler import VOCImgSampler
-from model.test import test_net, test_net_with_sample
-from datasets.factory import get_imdb
 from davelib.profile_stats import ProfileStats
-from davelib.utils import show_all_variables, stdout_redirector
+from davelib.utils import show_all_variables, stdout_redirector, run_test_metric
 
 
 def check_reconstruction_error(V, H, W, K):
@@ -95,31 +82,13 @@ class SeparableNet(object):
 
     self._net_sep = resnetv1_sep(scope_idx, batch_size=1, num_layers=101, 
                         comp_weights_dict=comp_weights_dict, net_desc=net_desc)
-#     show_all_variables(True, self._net_sep.get_scope())
     self._net_sep.create_architecture(self._sess, "TEST", 21,
                           tag='default', anchor_scales=[8, 16, 32])
-#     init = tf.global_variables_initializer()
 #     show_all_variables(True, self._net_sep.get_scope())
 
-#     self._reduced_var_count = self.calc_variable_count(var_count_dict)
     self.assign_trained_weights_to_unchanged_layers()
     self.assign_trained_weights_to_separable_layers()  
     
-  def run_test_metric(self, num_imgs):
-    imdb = get_imdb('voc_2007_test')
-    filename ='default/res101_faster_rcnn_iter_110000'
-    
-    f = io.BytesIO()
-    with stdout_redirector(f): #this stops some meaningless errors on stderr
-      if num_imgs == len(imdb.image_index):
-        mAP = test_net(self._sess, self._net_sep, imdb, filename, max_per_image=100)
-      else:
-        sampler = VOCImgSampler()
-        sample_images = sampler.get_imgs(num_imgs)
-        mAP = test_net_with_sample(self._sess, self._net_sep, imdb, filename, sample_images, 
-                                   max_per_image=100)
-    return mAP
-
   def assign_trained_weights_to_unchanged_layers(self):
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
       restore_var_dict = {}
@@ -185,7 +154,7 @@ class SeparableNet(object):
     return base_output
 
   def run_performance_analysis(self, blobs_list, sess, base_outputs_list, output_layers, 
-                               compression_stats, base_profile_stats, plot=False):
+                               compression_stats, base_profile_stats, num_imgs, mAP_base_net, plot=False):
 
     if base_outputs_list is None:
       base_outputs_list = self._base_net.get_outputs_multi_image(blobs_list, output_layers, sess)
@@ -231,11 +200,15 @@ class SeparableNet(object):
       compression_stats.set(self._net_desc, 'diff_max_'+name, diff_max_abs)
 
 #         num_imgs = 4952
-    num_imgs = 100
-    mAP = self.run_test_metric(num_imgs)
-    compression_stats.set(self._net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
-    print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
-#     print('diff_mean_abs=%f'%diff_mean_abs)
+    if num_imgs > 0:
+      mAP = run_test_metric(num_imgs, self._net_sep, sess)
+      compression_stats.set(self._net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
+      print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
+    else:
+      print('diff_mean_abs=%f'%diff_mean_abs)
+      
+    compression_stats.set(self._net_desc, 'mAP_%d_top%d_delta'%
+                          (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP - mAP_base_net)
     profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph())
     
     compression_stats.set_profile_stats(self._net_desc, profile_stats, base_profile_stats)
