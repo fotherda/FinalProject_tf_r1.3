@@ -70,18 +70,18 @@ def plot_filters(plots_dict, n):
 
 class SeparableNet(object):
   
-  def __init__(self, scope_idx, base_net, sess, saved_model_path, comp_weights_dict, 
+  def __init__(self, scope_idx, base_net, sess, saved_model_path, base_weights_dict, 
                net_desc, base_variables):
 
     self._base_net = base_net
-    self._comp_weights_dict = comp_weights_dict
+    self._base_weights_dict = base_weights_dict
     self._net_desc = net_desc
     self._sess = sess
     self._saved_model_path = saved_model_path
     self._base_variables = base_variables
 
     self._net_sep = resnetv1_sep(scope_idx, batch_size=1, num_layers=101, 
-                        comp_weights_dict=comp_weights_dict, net_desc=net_desc)
+                        base_weights_dict=base_weights_dict, net_desc=net_desc)
     self._net_sep.create_architecture(self._sess, "TEST", 21,
                           tag='default', anchor_scales=[8, 16, 32])
 #     show_all_variables(True, self._net_sep.get_scope())
@@ -96,7 +96,8 @@ class SeparableNet(object):
       for v in self._base_variables:
         name_full = v.op.name
         layer_name = LayerName(name_full, 'net_layer_weights')
-        if layer_name in self._comp_weights_dict.keys():
+        if layer_name in self._net_desc:
+#         if layer_name in self._comp_weights_dict.keys():
           continue
 #         print(name_full + ' ' + layer_name )
         restore_var_dict[name_full] = tf.get_variable(layer_name.layer_weights()) 
@@ -108,7 +109,9 @@ class SeparableNet(object):
   def assign_trained_weights_to_separable_layers(self):
     all_ops = []
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
-      for layer_name, source_weights in self._comp_weights_dict.items():
+      for layer_name in self._net_desc:
+#       for layer_name, source_weights in self._comp_weights_dict.items():
+        source_weights = self._base_weights_dict[layer_name]
         layer1_name = LayerName(layer_name +'_sep/weights','layer_weights')
         dest_weights_1 = tf.get_variable(layer1_name.layer_weights())
         dest_weights_2 = tf.get_variable(layer_name.layer_weights())
@@ -154,7 +157,7 @@ class SeparableNet(object):
     return base_output
 
   def run_performance_analysis(self, blobs_list, sess, base_outputs_list, output_layers, 
-                               compression_stats, base_profile_stats, num_imgs, mAP_base_net, plot=False):
+                               compression_stats, base_profile_stats, mAP_base_net=None, num_imgs=0, plot=False):
 
     if base_outputs_list is None:
       base_outputs_list = self._base_net.get_outputs_multi_image(blobs_list, output_layers, sess)
@@ -203,12 +206,12 @@ class SeparableNet(object):
     if num_imgs > 0:
       mAP = run_test_metric(num_imgs, self._net_sep, sess)
       compression_stats.set(self._net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
+      compression_stats.set(self._net_desc, 'mAP_%d_top%d_delta'%
+                            (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP - mAP_base_net)
       print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
     else:
       print('diff_mean_abs=%f'%diff_mean_abs)
       
-    compression_stats.set(self._net_desc, 'mAP_%d_top%d_delta'%
-                          (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP - mAP_base_net)
     profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph())
     
     compression_stats.set_profile_stats(self._net_desc, profile_stats, base_profile_stats)

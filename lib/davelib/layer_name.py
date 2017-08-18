@@ -100,6 +100,15 @@ def remove_bottleneck_1_3_shortcut_layers(layer_names):
       filtered.append(v)
   return filtered
 
+def remove_all_except_conv2_first_conv1(layer_names):  
+  filtered = []
+  for v in layer_names:
+    if 'block' not in v and 'conv1' in v:
+      filtered.append(v)
+    elif 'conv2' in v:
+      filtered.append(v)
+  return filtered
+
 def remove_bottleneck_not_unit1(layer_names):  
   filtered = []
   for v in layer_names:

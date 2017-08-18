@@ -99,10 +99,10 @@ def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
 
 class resnetv1_sep(resnetv1):
     
-  def __init__(self, scope_idx, batch_size, num_layers, comp_weights_dict, net_desc):
+  def __init__(self, scope_idx, batch_size, num_layers, base_weights_dict, net_desc):
     resnetv1.__init__(self, batch_size, num_layers)
     self._resnet_scope = 'resnet_v1_sep%d_%d' % (scope_idx, num_layers)  
-    self._comp_weights_dict = comp_weights_dict
+    self._base_weights_dict = base_weights_dict
     self._net_desc = net_desc
     self.bottleneck_func = self.bottleneck
     self._end_points_collection = self._resnet_scope + '_end_points'
@@ -144,7 +144,8 @@ class resnetv1_sep(resnetv1):
         shortcut = resnet_utils.subsample(inputs, stride, 'shortcut')
       else:
         layer_name = LayerName(sc.name + '/shortcut', 'net_layer')
-        if layer_name in self._comp_weights_dict.keys():
+        if layer_name in self._net_desc:
+#         if layer_name in self._comp_weights_dict.keys():
           shortcut = self.separate_1x1_conv_layer(inputs, depth, stride, layer_name, scope='shortcut')
         else:
           shortcut = layers.conv2d(inputs, depth, [1, 1], stride=stride, activation_fn=None,
@@ -152,14 +153,16 @@ class resnetv1_sep(resnetv1):
         
         
       layer_name = LayerName(sc.name + '/conv1', 'net_layer')
-      if layer_name in self._comp_weights_dict.keys():
+      if layer_name in self._net_desc:
+#       if layer_name in self._comp_weights_dict.keys():
         residual = self.separate_1x1_conv_layer(inputs, depth_bottleneck, 1, layer_name, scope='conv1')
       else:
         residual = layers.conv2d(inputs, depth_bottleneck, [1, 1], stride=1, scope='conv1')
        
        
       layer_name = LayerName(sc.name + '/conv2', 'net_layer')
-      if layer_name in self._comp_weights_dict.keys():
+      if layer_name in self._net_desc:
+#       if layer_name in self._comp_weights_dict.keys():
         residual = self.separate_conv_layer(residual, depth_bottleneck, 3, stride, 
                                             rate=rate, layer_name='conv2', full_layer_name=layer_name)
       else:
@@ -168,7 +171,8 @@ class resnetv1_sep(resnetv1):
 
 
       layer_name = LayerName(sc.name + '/conv3', 'net_layer')
-      if layer_name in self._comp_weights_dict.keys():
+      if layer_name in self._net_desc:
+#       if layer_name in self._comp_weights_dict.keys():
         residual = self.separate_1x1_conv_layer(residual, depth, 1, layer_name, scope='conv3')
       else:
         residual = layers.conv2d(residual, depth, [1, 1], stride=1, activation_fn=None, scope='conv3')
@@ -221,7 +225,7 @@ class resnetv1_sep(resnetv1):
   def rpn_convolution(self, net_conv4, is_training, initializer):
     layer_name = 'rpn_conv/3x3'
 
-    if layer_name not in self._comp_weights_dict.keys():
+    if layer_name not in self._net_desc:
       return super(resnetv1_sep, self).rpn_convolution(net_conv4, is_training, initializer)
 
     K = self._net_desc[layer_name]
@@ -248,7 +252,7 @@ class resnetv1_sep(resnetv1):
     return net
 
   def fully_connected(self, input_, num_outputs, is_training, initializer, layer_name):
-    if layer_name not in self._comp_weights_dict.keys():
+    if layer_name not in self._net_desc:
       return super(resnetv1_sep, self).fully_connected(input_, num_outputs, is_training, 
                                                        initializer, layer_name)
 
@@ -278,9 +282,9 @@ class resnetv1_sep(resnetv1):
   
   def build_base(self):
     layer_name = LayerName('conv1')
-    if layer_name in self._comp_weights_dict.keys():
+    if layer_name in self._net_desc:
       with tf.variable_scope(self._resnet_scope, self._resnet_scope):
-        N = self._comp_weights_dict[layer_name].shape[3]
+        N = self._base_weights_dict[layer_name].shape[3]
   
         net = self.separate_conv_layer(self._image, N, 7, 2, rate=None, layer_name=layer_name,
                                        full_layer_name=layer_name)

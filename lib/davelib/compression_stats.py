@@ -6,37 +6,50 @@ Created on 13 Jul 2017
 import numpy as np
 import pickle as pi
 import matplotlib.pyplot as plt
-import re
+import re, time
 
 from collections import OrderedDict,defaultdict
 from matplotlib.ticker import MaxNLocator, FuncFormatter
-from sklearn.preprocessing import PolynomialFeatures
 from sklearn import linear_model
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
-from sklearn import cross_validation
+# from sklearn import cross_validation
 from scipy import optimize
 from scipy.optimize import least_squares, minimize
 import pyqt_fit.nonparam_regression as smooth
 from pyqt_fit import npr_methods, plot_fit
+from kernel_regression import KernelRegression
+from sklearn.svm import SVR
+# from sklearn.grid_search import GridSearchCV
+from sklearn.model_selection import GridSearchCV, learning_curve
+# from sklearn.learning_curve import learning_curve
 
 from functools import total_ordering
-# from davelib.utils import get_all_compressible_layers
+from mpl_toolkits.mplot3d import *
+from random import random, seed
+from matplotlib import cm
 
+root_filename = 'CompressionStats_'
 
 
 @total_ordering
 class CompressedNetDescription(dict):
    
-  def __init__(self, compressed_layers, Ks):
+  def __init__(self, K_by_layer_dict):
     items = []
-    self._Ks = []
-    for layer, K in zip(compressed_layers,Ks):
+#     self._Ks = []
+    for layer, K in K_by_layer_dict.items():
       self[layer] = K
-      self._Ks.append(K)
+#       self._Ks.append(K)
       items.extend((layer, K))
     self._key = tuple(items)
+
+#   def __init__(self, compressed_layers, Ks):
+#     items = []
+# #     self._Ks = []
+#     for layer, K in zip(compressed_layers,Ks):
+#       self[layer] = K
+# #       self._Ks.append(K)
+#       items.extend((layer, K))
+#     self._key = tuple(items)
       
 #   def __key(self):
 #     return self['conv1']
@@ -60,10 +73,10 @@ class CompressedNetDescription(dict):
 
   def get_Kfrac(self):
     for layer, K in self.items():
-      if 'block4' in layer:
+      if 'block4' in layer and 'conv2' in layer:
         Kfrac = K / 768.0
         break
-      elif 'block3' in layer:
+      elif 'block3' in layer and 'conv2' in layer:
         Kfrac = K / 384.0
         break
     return Kfrac
@@ -74,7 +87,7 @@ class CompressionStats(object):
     self._filename_suffix = filename_suffix
     self._all_Kmaxs_dict = all_Kmaxs_dict
     if load_from_file: #load from pickle file
-      self.load_from_file('CompressionStats_'+filename_suffix+'.pi')
+      self.load_from_file(root_filename+filename_suffix+'.pi')
     else:  
       self._stats = defaultdict( dict )
       
@@ -129,6 +142,14 @@ class CompressionStats(object):
                           base_profile_stats, '_perf_stats', 'total_requested_bytes'))
     self.set(net_desc, 'micros_'+count_or_frac, func(
                           base_profile_stats, '_perf_stats', 'total_cpu_exec_micros'))
+    self.set(net_desc, 'peak_bytes_'+count_or_frac, func(
+                          base_profile_stats, '_scope_all_stats', 'total_peak_bytes'))
+    self.set(net_desc, 'output_bytes_'+count_or_frac, func(
+                          base_profile_stats, '_scope_all_stats', 'total_output_bytes'))
+    self.set(net_desc, 'run_count_'+count_or_frac, func(
+                          base_profile_stats, '_scope_all_stats', 'total_run_count'))
+    self.set(net_desc, 'definition_count_'+count_or_frac, func(
+                          base_profile_stats, '_scope_all_stats', 'total_definition_count'))
     
     func = getattr(profile_stats, 'total_bytes_'+count_or_frac)
     self.set(net_desc, 'total_bytes_'+count_or_frac, func(base_profile_stats))
@@ -136,7 +157,8 @@ class CompressionStats(object):
   def save(self, suffix=None):
     if not suffix:
       suffix = self._filename_suffix
-    pi.dump( self._stats, open( 'CompressionStats_%s.pi'%suffix, "wb" ) )
+    pi.dump( self._stats, open( '%s%s.pi'%(root_filename,suffix), "wb" ) )
+
 
   def add_data_type(self, type_label, values): #values must be in order to match sorted net descriptions
     for i, (K_by_layer_dict, d) in enumerate(sorted(self._stats.items())):
@@ -144,7 +166,7 @@ class CompressionStats(object):
       d[type_label] = values[i]
     
   def merge(self, filename_suffix):
-    filename = 'CompressionStats_'+filename_suffix+'.pi'
+    filename = root_filename+filename_suffix+'.pi'
     other_stats = pi.load( open( filename, "rb" ) ) 
     
     for net_desc, data_dict in sorted(other_stats.items()):
@@ -181,6 +203,112 @@ class CompressionStats(object):
   def multivar_regress(self):
     X, y = self.regression_data()
     X = np.array(X)
+    y = np.array(y)
+    
+    pb = X[:,0].argsort()
+    Xb = X[pb]
+    yb = y[pb]
+
+    X1 = np.delete(X, 1, 1)
+    p1 = X1[:,0].argsort()
+    X1 = X1[p1]
+    y1 = y[p1]
+    
+    X2 = np.delete(X, 0, 1)
+    p2 = X2[:,0].argsort()
+    X2 = X2[p2]
+    y2 = y[p2]
+    
+    x_surf=np.arange(0, 2.0, 0.02)                # generate a mesh
+    y_surf=np.arange(0, 2.0, 0.02)
+    x_surf, y_surf = np.meshgrid(x_surf, y_surf)
+    Xpred = np.stack((x_surf.flatten(), y_surf.flatten()), axis=1)
+
+    svr = GridSearchCV(SVR(kernel='rbf'), cv=5,
+                   param_grid={"C": [1e-1, 1e0, 1e1, 1e2],
+                               "gamma": np.logspace(-2, 2, 10)})
+    kr = KernelRegression(kernel="rbf", gamma=np.logspace(-2, 2, 10))
+    t0 = time.time()
+    y_svr = svr.fit(Xb, yb).predict(Xpred)
+    print("SVR complexity and bandwidth selected and model fitted in %.3f s" % (time.time() - t0))
+
+    score_svr = svr.score(Xb, yb)
+    svr.fit(X1, y1)
+    score_svr1 = svr.score(X1, y1)
+    svr.fit(X2, y2)
+    score_svr2 = svr.score(X2, y2)
+    
+    t0 = time.time()
+    y_kr = kr.fit(Xb, yb).predict(Xpred)
+    print("KR including bandwith fitted in %.3f s" % (time.time() - t0))
+    
+    score_kr = kr.score(Xb, yb)
+    kr.fit(X1, y1)
+    score_kr1 = kr.score(X1, y1)
+    kr.fit(X2, y2)
+    score_kr2 = kr.score(X2, y2)
+
+    print('R^2 / coeff determination:')
+    print('  SVR model: cls_score=%0.3f bbox_pred=%0.3f both=%0.3f' % (score_svr1, score_svr2, score_svr))
+    print('  KR model: cls_score=%0.3f bbox_pred=%0.3f both=%0.3f' % (score_kr1, score_kr2, score_kr))
+    
+#     R^2 / coeff determination:
+#   SVR model: cls_score=0.675 bbox_pred=0.518 both=0.512
+#   KR model: cls_score=0.848 bbox_pred=0.320 both=0.881
+
+    
+    
+    ###############################################################################
+    # Visualize models
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')               # to work in 3d
+    plt.hold(True)
+    
+    z_surf = np.reshape(y_svr, x_surf.shape)          
+    surf = ax.plot_surface(x_surf, y_surf, z_surf, cmap=cm.coolwarm, alpha=0.5, rstride=1, cstride=1);    # plot a 3d surface plot
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+
+    ax.scatter(X[:,0], X[:,1], y, s=1, c='k')                        # plot a 3d scatter plot
+    
+    ax.set_xlabel('cls_score', fontsize=16)
+    ax.set_ylabel('bbox_pred', fontsize=16)
+    ax.set_zlabel('mAP', fontsize=16)
+    plt.show()
+    
+    
+    plt.scatter(X, y, c='k', s=1, label='data')
+#     plt.hold('on')
+    plt.plot(X, y_kr, c='g', label='Kernel Regression')
+    plt.plot(X, y_svr, c='r', label='SVR')
+    plt.xlabel('data')
+    plt.ylabel('target')
+    plt.title('Kernel regression versus SVR')
+    plt.legend()
+    plt.show()
+    
+    # Visualize learning curves
+    plt.figure()
+    train_sizes, train_scores_svr, test_scores_svr = \
+        learning_curve(svr, X, y, train_sizes=np.linspace(0.1, 1, 10),
+                       scoring="neg_mean_squared_error", cv=10)
+    train_sizes_abs, train_scores_kr, test_scores_kr = \
+        learning_curve(kr, X, y, train_sizes=np.linspace(0.1, 1, 10),
+                       scoring="neg_mean_squared_error", cv=10)
+    plt.plot(train_sizes, test_scores_svr.mean(1), 'o-', color="r",
+             label="SVR")
+    plt.plot(train_sizes, test_scores_kr.mean(1), 'o-', color="g",
+             label="Kernel Regression")
+    plt.yscale("symlog", linthreshy=1e-7)
+    plt.ylim(-10, -0.01)
+    plt.xlabel("Training size")
+    plt.ylabel("Mean Squared Error")
+    plt.title('Learning curves')
+    plt.legend(loc="best")
+    plt.show()
+
+  def multivar_regress6(self):
+    X, y = self.regression_data()
+    X = np.array(X)
     x = X[:,0]
     y = np.array(y)
     
@@ -198,86 +326,8 @@ class CompressionStats(object):
     yopts = k0(x)
     res = y - yopts
     plot_fit.plot_residual_tests(x, yopts, res, 'Spatial Average')
-    
-  def multivar_regress4(self):
-    X, y = self.regression_data()
-    X = np.array(X)
-    x = X[:,0]
-    y = np.array(y)
-    
-#     x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ,11, 12, 13, 14, 15], dtype=float)
-#     y = np.array([5, 7, 9, 11, 13, 15, 28.92, 42.81, 56.7, 70.59, 84.47, 98.36, 112.25, 126.14, 140.03])
-
-    def piecewise_linear(x, x0, y0, k1, k2):
-      return np.piecewise(x, [x < x0], [lambda x:k1*x + y0-k1*x0, lambda x:k2*x + y0-k2*x0])
-
-    def fun(params, x, y):
-      x0 = params[0] 
-      y0 = params[1]
-      k1 = params[2] 
-      k2 = params[3]
-      return piecewise_linear(x, x0, y0, k1, k2) - y
-    
-    
-    x0=np.array([1.2,0.74,0.001,-1.0])
-#     res = least_squares(fun, x0, args=(x, y), tr_solver='lsmr', method='dogbox', ftol=1e-16, xtol=1e-16, 
-#                         verbose=2, bounds=([0,0,-1, -5], [2,2,1,0]))
-#     res = least_squares(fun, x0, args=(x, y), verbose=2, tr_solver='lsmr', method='lm')
-#     res = least_squares(fun, x0, loss='soft_l1', f_scale=0.1, args=(x, y), verbose=2)
-    
-#     print(res.x)
-    
-    p, e = optimize.curve_fit(piecewise_linear, x[:20], y[:20], method='trf', tr_solver='lsmr', verbose=2)
-    p, e = optimize.curve_fit(piecewise_linear, x[:10], y[:10])
-    p, e = optimize.curve_fit(piecewise_linear, x[:100], y[:100])
-    xd = np.linspace(0, 15, 100)
-    plt.plot(x, y, ".")
-    plt.plot(xd, piecewise_linear(xd, *p))
-    plt.show()
+      
   
-  def multivar_regress3(self):
-#     np.random.seed(0)
-# 
-#     n_samples = 30
-    degrees = [1, 4, 15]
-    
-#     true_fun = lambda X: np.cos(1.5 * np.pi * X)
-#     X = np.sort(np.random.rand(n_samples))
-#     y = true_fun(X) + np.random.randn(n_samples) * 0.1
-    
-    X, y = self.regression_data()
-    X = np.array(X)
-    X = X[:,0]
-    
-    plt.figure(figsize=(14, 5))
-    for i in range(len(degrees)):
-        ax = plt.subplot(1, len(degrees), i + 1)
-        plt.setp(ax, xticks=(), yticks=())
-    
-        polynomial_features = PolynomialFeatures(degree=degrees[i],
-                                                 include_bias=False)
-        linear_regression = LinearRegression()
-        pipeline = Pipeline([("polynomial_features", polynomial_features),
-                             ("linear_regression", linear_regression)])
-        pipeline.fit(X[:, np.newaxis], y)
-    
-        # Evaluate the models using crossvalidation
-        scores = cross_validation.cross_val_score(pipeline,
-            X[:, np.newaxis], y, scoring="mean_squared_error", cv=10)
-    
-        X_test = np.linspace(0, 1, 100)
-        plt.plot(X_test, pipeline.predict(X_test[:, np.newaxis]), label="Model")
-#         plt.plot(X_test, true_fun(X_test), label="True function")
-        plt.scatter(X, y, s=1, label="Samples")
-        plt.xlabel("x")
-        plt.ylabel("y")
-#         plt.xlim((0, 1))
-#         plt.ylim((-2, 2))
-        plt.legend(loc="best")
-        plt.title("Degree {}\nMSE = {:.2e}(+/- {:.2e})".format(
-            degrees[i], -scores.mean(), scores.std()))
-    plt.show()
-
   def regression_data(self):
     X = []
     y = []
@@ -322,6 +372,7 @@ class CompressionStats(object):
 
   def plot(self, plot_data=None, legend_labels=None):
     fig, ax = plt.subplots()
+    plt.legend(legend_labels, title=r'fraction of $K_{max}$', loc='upper left')
 #     plt.title('Reconstruction Error')
     ax.axhline(y=0, color='k')
     ax.axvline(x=0, color='k')
@@ -391,7 +442,6 @@ class CompressionStats(object):
 #       plt.ylabel(type_label)
     plt.xticks(layer_idxs, layers_names, rotation='vertical')
 
-    plt.legend(legend_labels, title=r'fraction of $K_{max}$')
 #     plt.legend(legend_labels)
     plt.xlabel('layer index')
     plt.show()  
