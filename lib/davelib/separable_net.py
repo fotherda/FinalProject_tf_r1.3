@@ -17,6 +17,20 @@ from davelib.profile_stats import ProfileStats
 from davelib.utils import show_all_variables, stdout_redirector, run_test_metric
 
 
+def mismatch_count(base_outputs, sep_outputs):
+  count = 0
+  for i in range(base_outputs.shape[0]):
+    base_output = base_outputs[i]
+    sep_output = sep_outputs[i]
+    max_idx_base = np.argmax(base_output)
+    max_idx_sep = np.argmax(sep_output)
+    if max_idx_base != max_idx_sep:
+      count += 1
+  
+  return count    
+    
+    
+  
 def check_reconstruction_error(V, H, W, K):
   s = W.shape
   assert s[0] == s[1]
@@ -97,7 +111,6 @@ class SeparableNet(object):
         name_full = v.op.name
         layer_name = LayerName(name_full, 'net_layer_weights')
         if layer_name in self._net_desc:
-#         if layer_name in self._comp_weights_dict.keys():
           continue
 #         print(name_full + ' ' + layer_name )
         restore_var_dict[name_full] = tf.get_variable(layer_name.layer_weights()) 
@@ -157,7 +170,8 @@ class SeparableNet(object):
     return base_output
 
   def run_performance_analysis(self, blobs_list, sess, base_outputs_list, output_layers, 
-                               compression_stats, base_profile_stats, mAP_base_net=None, num_imgs=0, plot=False):
+                               compression_stats, base_profile_stats, mAP_base_net=None, 
+                               num_imgs_list=[], plot=False, run_profile_stats=True):
 
     if base_outputs_list is None:
       base_outputs_list = self._base_net.get_outputs_multi_image(blobs_list, output_layers, sess)
@@ -165,8 +179,8 @@ class SeparableNet(object):
 
     for name in output_layers: # probably cls_score and bbox_pred - the 2 final layers
       diffs_cat = None
-#       diff_list = []
       base_output_list = []
+      mismatch_cnt = 0
       for base_outputs, sep_outputs in zip(base_outputs_list, sep_outputs_list): #loop once per test img
         base_output = base_outputs[name]
         sep_output = sep_outputs[name]
@@ -174,21 +188,17 @@ class SeparableNet(object):
         if plot:
           self.plot_outputs(base_output, sep_output, name)
         
+        mismatch_cnt += mismatch_count(base_output, sep_output)
+        
         base_output_trimmed = self.trim_outputs(base_output, sep_output)
         diff = np.subtract(base_output_trimmed, sep_output)
         if diffs_cat is not None:
-#           diff_flat = diff.flatten()
-#           diffs_cat = np.concatenate(diffs_cat, diff_flat)
           diffs_cat = np.append(diffs_cat, diff)
         else:
           diffs_cat = diff
           
-#         diff_list.append(diff)
         base_output_list.append(base_output)
         
-#       diff = np.vstack(diff_list) # aggregate the diffs across all the images 
-#       base_output = np.vstack(base_output_list)
-    
       base_output_mean = np.mean(np.absolute(base_output_list)) 
       diff_mean_abs = np.mean(np.absolute(diffs_cat))
       diff_stdev_abs = np.std(np.absolute(diffs_cat))
@@ -201,20 +211,22 @@ class SeparableNet(object):
       compression_stats.set(self._net_desc, 'diff_mean_'+name, diff_mean_abs)
       compression_stats.set(self._net_desc, 'diff_stdev_'+name, diff_stdev_abs)
       compression_stats.set(self._net_desc, 'diff_max_'+name, diff_max_abs)
+      compression_stats.set(self._net_desc, 'mismatch_count_'+name, mismatch_cnt)
 
 #         num_imgs = 4952
-    if num_imgs > 0:
-      mAP = run_test_metric(num_imgs, self._net_sep, sess)
-      compression_stats.set(self._net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
-      compression_stats.set(self._net_desc, 'mAP_%d_top%d_delta'%
-                            (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP - mAP_base_net)
-      print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
+    if len(num_imgs_list) > 0:
+      mAP_dict = run_test_metric(num_imgs_list, self._net_sep, sess)
+      for num_imgs, mAP in mAP_dict.items():
+        compression_stats.set(self._net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
+        compression_stats.set(self._net_desc, 'mAP_%d_top%d_delta'%
+                              (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP - mAP_base_net)
+        print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
     else:
       print('diff_mean_abs=%f'%diff_mean_abs)
       
-    profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph())
-    
-    compression_stats.set_profile_stats(self._net_desc, profile_stats, base_profile_stats)
+    if run_profile_stats:
+      profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph())
+      compression_stats.set_profile_stats(self._net_desc, profile_stats, base_profile_stats)
   
   def run_inference(self, blobs, base_outputs, compressed_layers):
   

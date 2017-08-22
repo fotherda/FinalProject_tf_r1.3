@@ -3,38 +3,45 @@ Created on 29 Jul 2017
 
 @author: david
 '''
-
 import sys
 import numpy as np
 import tensorflow as tf
-
-from contextlib import contextmanager
 import ctypes
 import io
 import os
 import tempfile
+
+from contextlib import contextmanager
 from davelib.voc_img_sampler import VOCImgSampler
 from model.test import test_net, test_net_with_sample
 from datasets.factory import get_imdb
 
-# from davelib.layer_name import LayerName
-
-
   
-def run_test_metric(num_imgs, net, sess):
+def run_test_metric(num_imgs_list, net, sess):
   imdb = get_imdb('voc_2007_test')
   filename ='default/res101_faster_rcnn_iter_110000'
   
   f = io.BytesIO()
-  with stdout_redirector(f): #this stops some meaningless errors on stderr
-    if num_imgs == len(imdb.image_index):
-      mAP = test_net(sess, net, imdb, filename, max_per_image=100)
+  with stdout_redirector(f): #this stops some meaningless errors on stdout
+    if len(num_imgs_list)==1:
+      num_imgs = num_imgs_list[0]
+      if num_imgs == len(imdb.image_index):
+        mAP = test_net(sess, net, imdb, filename, max_per_image=100)
+        mAP_dict = {num_imgs: mAP}
+      else:
+        sampler = VOCImgSampler()
+        sample_images = sampler.get_imgs(num_imgs)
+        mAP_dict = test_net_with_sample(sess, net, imdb, filename, sample_images, 
+                                   max_per_image=100)
     else:
       sampler = VOCImgSampler()
-      sample_images = sampler.get_imgs(num_imgs)
-      mAP = test_net_with_sample(sess, net, imdb, filename, sample_images, 
-                                 max_per_image=100)
-  return mAP
+      sample_names_dict = sampler.get_nested_img_lists(num_imgs_list)
+      largest_num_imgs = (sorted(num_imgs_list))[-1]
+      sample_images = sample_names_dict[largest_num_imgs]
+      
+      mAP_dict = test_net_with_sample(sess, net, imdb, filename, sample_images, 
+                                 max_per_image=100, sample_names_dict=sample_names_dict)
+  return mAP_dict
 
 
 libc = ctypes.CDLL(None)
@@ -78,6 +85,10 @@ def stdout_redirector(stream):
     finally:
         tfile.close()
         os.close(saved_stdout_fd)
+    
+    #if you want to see what came down stderr run this:
+    #print(f.getvalue().decode('utf-8'))
+
 
 @contextmanager
 def stderr_redirector(stream):

@@ -109,6 +109,41 @@ def remove_all_except_conv2_first_conv1(layer_names):
       filtered.append(v)
   return filtered
 
+def keep_only_conv_not_1x1(layer_names):  
+  filtered = []
+  for v in layer_names:
+    if 'block' not in v and 'conv1' in v:
+      filtered.append(v)
+    elif 'conv2' in v:
+      filtered.append(v)
+    elif 'rpn' in v:
+      filtered.append(v)
+  return filtered
+
+def remove_all_layers_before_rois(layer_names):  
+  filtered = []
+  for v in layer_names:
+    if 'block' not in v and 'conv1' in v:
+      continue
+    elif 'block1' not in v and \
+         'block2' not in v and \
+         'block3' not in v and \
+         'rpn' not in v:
+      filtered.append(v)
+  return filtered
+
+def remove_all_layers_after_rois(layer_names):  
+  filtered = []
+  for v in layer_names:
+    if 'block' not in v and 'conv1' in v:
+      filtered.append(v)
+    elif 'block1' in v or \
+         'block2' in v or \
+         'block3' in v or \
+         'rpn' in v:
+      filtered.append(v)
+  return filtered
+
 def remove_bottleneck_not_unit1(layer_names):  
   filtered = []
   for v in layer_names:

@@ -196,7 +196,8 @@ def test_net(sess, net, imdb, weights_filename, max_per_image=100, thresh=0.05):
   print('Evaluating detections')
   imdb.evaluate_detections(all_boxes, output_dir)
 
-def test_net_with_sample(sess, net, imdb, weights_filename, sample_images, max_per_image=100, thresh=0.05):
+def test_net_with_sample(sess, net, imdb, weights_filename, sample_images, max_per_image=100,
+                         thresh=0.05, sample_names_dict=None):
   np.random.seed(cfg.RNG_SEED)
   """Test a Fast R-CNN network on an image database."""
   num_images = len(sample_images)
@@ -253,5 +254,12 @@ def test_net_with_sample(sess, net, imdb, weights_filename, sample_images, max_p
     pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
 
   print('Evaluating detections')
-  mAP = imdb.evaluate_detections(all_boxes, output_dir, sample_images)
-  return mAP
+  ret_dict = {}
+  if sample_names_dict:
+    for num_imgs, sample_images in sample_names_dict.items(): 
+      boxes_subset = [l[:num_imgs] for l in all_boxes]
+      ret_dict[num_imgs] = imdb.evaluate_detections(boxes_subset, output_dir, sample_images)
+  else:
+    ret_dict[num_imgs] = imdb.evaluate_detections(all_boxes, output_dir, sample_images)
+  
+  return ret_dict

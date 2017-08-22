@@ -286,8 +286,10 @@ class resnetv1(Network):
 #                                        trainable=is_training,
 #                                        activation_fn=None, scope='bbox_pred')
 
+      utils.collect_named_outputs(self._end_points_collection, self._resnet_scope+'/rois', rois)
       utils.collect_named_outputs(self._end_points_collection, self._resnet_scope+'/fc7', fc7)
       utils.collect_named_outputs(self._end_points_collection, self._resnet_scope+'/cls_score', cls_score)
+      utils.collect_named_outputs(self._end_points_collection, self._resnet_scope+'/cls_prob', cls_prob)
       utils.collect_named_outputs(self._end_points_collection, self._resnet_scope+'/bbox_pred', bbox_pred)
     
     self._predictions["rpn_cls_score"] = rpn_cls_score

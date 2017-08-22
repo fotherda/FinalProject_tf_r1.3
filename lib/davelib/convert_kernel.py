@@ -57,12 +57,13 @@ class ExperimentController(object):
     self._saved_model_path = saved_model_path
     self._tfconfig = tfconfig
 #     im_names = ['000456.jpg', '000542.jpg']
-#     im_names = ['000456.jpg', '000542.jpg', '001150.jpg', '001763.jpg', '004545.jpg']
-    im_names = ['000456.jpg']
+    im_names = ['000456.jpg', '000542.jpg', '001150.jpg', '001763.jpg', '004545.jpg']
+#     im_names = ['000456.jpg']
     
     self._blobs_list = get_blobs(im_names)
 #     self._final_layers = [LayerName('cls_score')]
-    self._final_layers = [LayerName('cls_score'), LayerName('bbox_pred')]
+    self._final_layers = [LayerName('cls_prob'), LayerName('bbox_pred'), LayerName('rois')]
+#     self._final_layers = [LayerName('cls_score'), LayerName('bbox_pred')]
 #     final_layer = LayerName('block3/unit_23/bottleneck_v1/conv3')
 
     
@@ -144,40 +145,78 @@ class ExperimentController(object):
 #     net_desc = CompressedNetDescription(self._compressed_layers, K_by_layer)
     return net_desc
   
-  def optimise_for_memory(self, max_iter):
-    objective_dict = self._compression_stats.build_label_layer_K_dict()
-    objective_dict = objective_dict['param_bytes']
+  def optimise_for_memory(self, max_iter, stats_file_suffix):
+    guide_compression_stats = CompressionStats(filename_suffix=stats_file_suffix, 
+                                load_from_file=True, all_Kmaxs_dict=self._all_Kmaxs_dict)
+    
+    stats_dict = guide_compression_stats.build_label_layer_K_dict()
+    objective_label = 'param_bytes_frac_delta'
+#     objective_label = 'total_output_bytes_frac_delta'
+#     objective_label = 'total_bytes_frac_delta'
+#     performance_label = 'diff_mean_cls_score'
+    performance_label = 'diff_mean_cls_prob'
+    
+    objective_dict = stats_dict[objective_label] #layer->K
+    performance_dict = stats_dict[performance_label]
+
+    #bbox_pred layer doesn't affect cls_score
+    del objective_dict['bbox_pred']
+    
+    def remove_all_except_conv2_first_conv1(d):  
+      filtered = {}
+      for k,v in d.items():
+        if 'block' not in k and 'conv1' in k:
+          filtered[k] = v
+        elif 'conv2' in k:
+          filtered[k] = v
+        elif 'rpn' in k:
+          filtered[k] = v
+      return filtered
+
+    objective_dict = remove_all_except_conv2_first_conv1(objective_dict)
     
     layer_K_dict = {} 
-    delta_dict = {}
     
     def get_K_old_new(layer):
+      sorted_keys = list(reversed(sorted(objective_dict[layer].keys())))
       if layer in layer_K_dict:
         K_old = layer_K_dict[layer]
         idx = sorted_keys.index( K_old )
-        K_new = sorted_keys[idx + 1]
+        if idx+1 < len(sorted_keys):
+          K_new = sorted_keys[idx + 1]
+        else:
+          K_new = 0
       else:
         K_new = sorted_keys[0] #start with the largest K value
+        K_old = 0
       return K_old, K_new
 
     scope_idx=1
+    old_performance_metric = 0
     
-    for _ in range(max_iter):
-      for layer, d in objective_dict.items():
-        sorted_keys = list(reversed(sorted(d.keys())))
+    for iter in range(max_iter):#each iteration compresses 1 layer (a bit more)
+      grad_dict = {}
+      perf_delta_dict = {}
+      for layer in objective_dict:
         K_old, K_new = get_K_old_new(layer)  
-        if K_old:
+        if K_new == 0: #max compression reached for this layer
+          continue
+        elif K_old != 0:
           objective_delta = objective_dict[layer][K_new] - objective_dict[layer][K_old]
+          performance_delta = performance_dict[layer][K_new] - performance_dict[layer][K_old]
         else:
           objective_delta = objective_dict[layer][K_new]
-          
-        delta_dict[objective_delta] = layer 
+          performance_delta = performance_dict[layer][K_new]
+
+        objective_grad = objective_delta / performance_delta
+        grad_dict[objective_grad] = layer 
+        perf_delta_dict[layer] = performance_delta
         
-      delta_min = list(sorted(delta_dict))[0]
-      layer_with_min_delta = delta_dict[delta_min]
-      K_old, K_new = get_K_old_new(layer_with_min_delta)
-      layer_K_dict[layer] = K_new
-      
+      grad_min = list(sorted(grad_dict))[0]
+      layer_with_min_grad = grad_dict[grad_min]
+      K_old, K_new = get_K_old_new(layer_with_min_grad)
+      layer_K_dict[layer_with_min_grad] = K_new
+      expected_perf_delta = perf_delta_dict[layer_with_min_grad]
       
       self._sess.close() #restart session to free memory and to reset profile stats
       tf.reset_default_graph()
@@ -190,25 +229,85 @@ class ExperimentController(object):
       
       sep_net.run_performance_analysis(self._blobs_list, self._sess, self._base_outputs_list, 
                                        self._final_layers, self._compression_stats, 
-                                       self._base_profile_stats)
+                                       self._base_profile_stats, run_profile_stats=False)
+      
+      new_performance_metric = self._compression_stats.get(net_desc, performance_label)
+#       objective_metric = self._compression_stats.get(net_desc, objective_label)
+      actual_perf_delta = new_performance_metric - old_performance_metric
+      print('%s: K:%d->%d perf=%f'%(layer_with_min_grad,K_old,K_new,new_performance_metric))
+      print('expected perf delta=%.3f, actual perf delta=%.3f'%(expected_perf_delta,actual_perf_delta))
+      old_performance_metric = new_performance_metric
+      
       scope_idx += 1
   
-  def run_exp(self, num_imgs):
+  def run_split_net_exp(self, num_imgs):
+    compressed_layers_all = get_all_compressible_layers()
+    compressed_layers_all = keep_only_conv_not_1x1(compressed_layers_all)
+    layer_idxs = [0]
+    mAP_base_net = self._base_net_wrapper.mAP(num_imgs, cfg.TEST.RPN_POST_NMS_TOP_N, self._sess)
+    
+    def run_this_split(compressed_layers):    
+      scope_idx=1
+      for l, layer_name in enumerate(compressed_layers):
+        if l not in layer_idxs:
+          continue
+        self._compressed_layers = compressed_layers
+        
+        Kfracs = np.arange(0.7, 1.0, 0.05)
+#         Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+#         Kfracs = [0.5]
+        for Kfrac in Kfracs:
+          self._sess.close() #restart session to free memory and to reset profile stats
+          tf.reset_default_graph()
+          self._sess = tf.Session(config=self._tfconfig) 
+  
+          net_desc = self.build_net_desc(Kfrac)  
+          
+          sep_net = SeparableNet(scope_idx, self._base_net, self._sess, self._saved_model_path, 
+                                 self._all_comp_weights_dict, net_desc, self._base_variables)
+          
+          sep_net.run_performance_analysis(self._blobs_list, self._sess, self._base_outputs_list, 
+                                           self._final_layers, self._compression_stats, 
+                                           self._base_profile_stats, mAP_base_net, num_imgs,
+                                           run_profile_stats=False)
+          self._compression_stats.set(net_desc, 'Kfrac', Kfrac)
+          self._compression_stats.save()
+          print(layer_name + ' Kfrac=' + str(Kfrac) + ' complete')
+          scope_idx += 1
+  #         show_all_variables(True, sep_net._net_sep.get_scope())
+
+    
+    self._final_layers = [LayerName('rois')]
+    compressed_layers = remove_all_layers_after_rois(compressed_layers_all)
+    run_this_split(compressed_layers)
+    
+    self._final_layers = [LayerName('cls_prob'), LayerName('bbox_pred')]
+    num_imgs = 0 #stops calc of mAP
+    compressed_layers = remove_all_layers_before_rois(compressed_layers_all)
+    run_this_split(compressed_layers)
+    
+    
+  def run_exp(self, num_imgs_list):
     compressed_layers = get_all_compressible_layers()
     compressed_layers = remove_all_except_conv2_first_conv1(compressed_layers)
 #     compressed_layers = remove_bottleneck_shortcut_layers(compressed_layers)
 #     compressed_layers = remove_bottleneck_not_unit1(compressed_layers)
-#     compressed_layers = []
-#     compressed_layers.append( LayerName('rpn_conv/3x3/weights') )
-#     compressed_layers.append( LayerName('block3/unit_1/bottleneck_v1/shortcut/weights') )
     
     #     Ks = range(1,11)
 #     layer_idxs = range(7)
     layer_idxs = [0]
-    num_imgs = 0
+#     num_imgs = 0
 #     compression_stats = CompressionStats(filename_suffix='')
 
-    mAP_base_net = self._base_net_wrapper.mAP(num_imgs, cfg.TEST.RPN_POST_NMS_TOP_N, self._sess)
+    mAP_dict = self._base_net_wrapper.mAP(num_imgs_list, cfg.TEST.RPN_POST_NMS_TOP_N, self._sess)
+    max_num_imgs = sorted(num_imgs_list)[-1]
+    mAP_base_net = mAP_dict[max_num_imgs]
+    
+    base_net_desc = CompressedNetDescription({})
+    for num_imgs, mAP in mAP_dict.items():
+        self._compression_stats.set(base_net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
+    self._compression_stats.save()
+              
     scope_idx=1
 #     compressed_layers = remove_layers_after_block3(compressed_layers)
 #     compressed_layers.remove('conv1')
@@ -218,8 +317,10 @@ class ExperimentController(object):
 #       self._compressed_layers = [layer_name]
       self._compressed_layers = compressed_layers
       
-      Kfracs = [0.6]
-#       Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+#       Kfracs = [0.6]
+#       Kfracs = np.arange(0.01, 1.0, 0.025)
+      Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+#       Kfracs = [0.05,0.1,0.2,0.3,0.4,0.5,0.6,1.0]
 #       Ks = self.get_Ks(layer_name, Kfracs)
       for Kfrac in Kfracs:
         self._sess.close() #restart session to free memory and to reset profile stats
@@ -233,7 +334,7 @@ class ExperimentController(object):
         
         sep_net.run_performance_analysis(self._blobs_list, self._sess, self._base_outputs_list, 
                                          self._final_layers, self._compression_stats, 
-                                         self._base_profile_stats, mAP_base_net, num_imgs)
+                                         self._base_profile_stats, mAP_base_net, num_imgs_list)
         self._compression_stats.save()
         print(layer_name + ' Kfrac=' + str(Kfrac) + ' complete')
         scope_idx += 1
@@ -245,17 +346,20 @@ def pre_tasks():
   return
 #   print_for_latex()
 #   layers = get_all_compressible_layers()
-#   stats = CompressionStats('9')
-#   stats = CompressionStats('allLayersKfrac0.8_0.9_1.0')
+  stats = CompressionStats('11')
+#   stats2 = CompressionStats('12')
+#   stats = CompressionStats('4952_top150')
 #   stats = CompressionStats('allLayersKfrac0.5_0.8_0.9_1.0')
 #   stats = CompressionStats('allLayersKfrac0.1_0.2_0.3_0.4_0.5_0.8_0.9_1.0')
-  stats = CompressionStats('allLayersKfrac0.1_1.0')
-#   stats = CompressionStats('allLayersKfrac0.9')
+#   stats = CompressionStats('allLayersKfrac0.1_1.0')
+#   stats = CompressionStats('Kfrac0.01-1.0_conv2')
   print(stats)
+  
+  stats.merge('12')
   
   
 #   stats.calc_profile_stats_all_nets()
-#   stats.multivar_regress()
+  stats.multivar_regress()
 #   stats.save('allLayersKfrac0.8_0.9_1.0')
   
 #   stats = CompressionStats('block3_4_mAP_corrn')
@@ -268,7 +372,7 @@ def pre_tasks():
 #     stats.merge('CompressionStats_save2.pi')
 #   stats.merge('allLayersKfrac0.5')
  
-#   stats.merge('allLayersKfrac0.9')
+  stats.merge('allLayersKfrac0.9')
 #   stats.save('allLayersKfrac0.1_1.0')
 
 #     stats.add_data_type('diff_mean_block3', [0.620057,0.557226,0.426003,0.338981,0.170117,
@@ -284,57 +388,48 @@ def pre_tasks():
 #                              plot_type_label='diff_mean', ylabel='mean reconstruction error')
 #                               plot_type_label='mAP_200_top150', ylabel='mAP')
 
-#   types = ['base_mean_bbox_pred', 'base_mean_cls_score', 'diff_max_bbox_pred', 
-#            'diff_max_cls_score', 'diff_mean_bbox_pred', 'diff_mean_cls_score', 
-#            'diff_stdev_bbox_pred', 'diff_stdev_cls_score', 'flops_reduced_count', 
-#            'flops_reduced_frac', 'micros_reduced_count', 'micros_reduced_frac', 
-#            'param_bytes_reduced_count', 'param_bytes_reduced_frac', 'params_reduced_count', 
-#            'params_reduced_frac', 'perf_bytes_reduced_count', 'perf_bytes_reduced_frac',
-#            'mAP_100_top150']
-  types = [['base_mean_bbox_pred', 'base_mean_bbox_pred', False],
+  types = [['base_mean_bbox_pred', 'base_mean_bbox_pred', False], #1
            ['base_mean_cls_score', 'base_mean_cls_score', False], 
            ['diff_max_bbox_pred', 'diff_max_bbox_pred', False],
            ['diff_max_cls_score', 'diff_max_cls_score', False],
-           ['diff_mean_bbox_pred', '$\Delta$ bbox_pred', False],
+           ['diff_mean_bbox_pred', '$\Delta$ bbox_pred', False], #5
            ['diff_mean_cls_score', '$\Delta$ cls_score', False],
            ['diff_stdev_bbox_pred', 'diff_stdev_bbox_pred', False],
            ['diff_stdev_cls_score', 'diff_stdev_cls_score', False],
            ['flops_count_delta', 'flops_count_delta', False],
-           ['flops_frac_delta', '$\Delta$ flops', True],
+           ['flops_frac_delta', '$\Delta$ flops', True], #10
            ['micros_count_delta', 'micros_count_delta', False],
            ['micros_frac_delta', '$\Delta$ micros', True],
            ['param_bytes_count_delta', 'param_bytes_count_delta', False],
            ['param_bytes_frac_delta', '$\Delta$ param bytes', True],
-           ['params_count_delta', 'params_count_delta', False],
+           ['params_count_delta', 'params_count_delta', False], #15
            ['params_frac_delta', '$\Delta$ params', True],
            ['perf_bytes_count_delta', 'perf_bytes_count_delta', False],
            ['perf_bytes_frac_delta', '$\Delta$ perf bytes', True],
            ['output_bytes_frac_delta', '$\Delta$ perf bytes', True],
-           ['peak_bytes_frac_delta', '$\Delta$ perf bytes', True],
+           ['peak_bytes_frac_delta', '$\Delta$ perf bytes', True], #20
            ['run_count_frac_delta', '$\Delta$ perf bytes', True],
            ['definition_count_frac_delta', '$\Delta$ perf bytes', True],
            ['mAP_100_top150', 'mAP', False],
            ['total_bytes_frac_delta', '$\Delta$ total bytes', True]]
-#   plot_list = list( types[i-1] for i in [10,14,18,19,6] )
-  plot_list = list( types[i-1] for i in [10,12,14,18,19,6] )
+  plot_list = list( types[i-1] for i in [19,20,24,6] )
+#   plot_list = list( types[i-1] for i in [10,12,14,18,19,6] )
 #   plot_list = list( types[i-1] for i in [14,18,20,19] )
-  stats.plot( plot_list, legend_labels=['0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9','1.0'] )
-  exit()
+#   stats.plot( plot_list, legend_labels=['0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9','1.0'] )
+#   exit()
   
 #     stats.plot_correlation(['diff_mean'])
-#   stats.plot_correlation_btw_stats(stats2, 'mAP')
+  stats.plot_correlation_btw_stats(stats2, 'mAP')
 #     stats.plot_correlation(['diff_mean','diff_mean_block3'])
 #     stats.plot_correlation(['diff_mean','diff_mean_block3'],[0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.75,0.9,1.0])
 #     stats.plot_correlation('diff_mean_block3')
 #     stats.plot_correlation([0.05,0.1,0.2,0.3,0.32,0.34,0.36,0.38,0.4,0.5,0.6,0.75,0.9,1.0])
-#     stats.plot_by_Kfracs(#plot_type_label=('mAP_'))
-#                           plot_type_label=('var_redux'))
+  stats.plot_by_Kfracs(#plot_type_label=('mAP_'))
+                        plot_type_label=('total_bytes_frac_delta'))
 #     stats = CompressionStats(filename='CompressionStats_.pi')
 #     print(stats)
 #     stats = CompressionStats(filename='CompressionStats_Kfrac0.05-1_noconv1.pi')
     
-#     stats.plot_by_Kfracs(#plot_type_label=('mAP_'))
-#                           plot_type_label=('var_redux'))
     
 #     stats.plot_K_by_layer(get_all_compressable_layers(), Kfracs = [0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,1], plot_type_label=('mAP_200_top150'))
   stats.plot(('base_mean','diff_mean','var_redux','mAP_10_top100'))
@@ -343,8 +438,10 @@ def pre_tasks():
 def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
 #   show_all_variables(show=True)
   
-  exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '11')
-  exp_controller.run_exp(num_imgs=100)
+  exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '13')
+  exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
+#   exp_controller.run_split_net_exp(num_imgs=100)
+#   exp_controller.optimise_for_memory(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')
   
 
     #do the plotting      

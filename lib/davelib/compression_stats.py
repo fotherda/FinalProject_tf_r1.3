@@ -7,6 +7,10 @@ import numpy as np
 import pickle as pi
 import matplotlib.pyplot as plt
 import re, time
+import sys  
+
+# reload(sys)  
+# sys.setdefaultencoding('utf8')
 
 from collections import OrderedDict,defaultdict
 from matplotlib.ticker import MaxNLocator, FuncFormatter
@@ -117,11 +121,15 @@ class CompressionStats(object):
   
   
   def load_from_file(self, filename):  
-    self._stats = pi.load( open( filename, "rb" ) ) 
+    self._stats = pi.load( open( filename, "rb") ) 
+#     self._stats = pi.load( open( filename, "rb"), encoding='latin1' ) 
 #     print self._stats   
 
   def set(self, net_desc, type_label, value):
     self._stats[net_desc][type_label] = value
+
+  def get(self, net_desc, type_label):
+    return self._stats[net_desc][type_label]
 
   def set_profile_stats(self, net_desc, profile_stats, base_profile_stats):
     self.set(net_desc, 'profile_stats', profile_stats)
@@ -179,6 +187,7 @@ class CompressionStats(object):
       else:
         self._stats[net_desc] = data_dict
 
+
   def calc_profile_stats_all_nets(self):
     for net_desc in sorted(self._stats):
       profile_stats = self._stats[net_desc]['profile_stats']
@@ -190,18 +199,20 @@ class CompressionStats(object):
   def build_label_layer_K_dict(self):
     new_dict = defaultdict( lambda: defaultdict (lambda: defaultdict(float)) )
     for net_desc, d in self._stats.items():
-      if len(net_desc) != 1:
-        continue
-      layer = list(net_desc.keys())[0]
-      K = net_desc[layer]
-      for type_label, value in d.items():
-        new_dict[type_label][layer][K] = value
+#       if len(net_desc) != 1:
+#         continue
+#       layer = list(net_desc.keys())[0]
+#       K = net_desc[layer]
+      for layer, K in net_desc.items():
+        for type_label, value in d.items():
+          new_dict[type_label][layer][K] = value
     return new_dict
   
 
   
   def multivar_regress(self):
-    X, y = self.regression_data()
+#     X, y = self.regression_data()
+    X, y = self.regression_data_split()
     X = np.array(X)
     y = np.array(y)
     
@@ -219,9 +230,9 @@ class CompressionStats(object):
     X2 = X2[p2]
     y2 = y[p2]
     
-    x_surf=np.arange(0, 2.0, 0.02)                # generate a mesh
-    y_surf=np.arange(0, 2.0, 0.02)
-    x_surf, y_surf = np.meshgrid(x_surf, y_surf)
+    x_range=np.arange(0, 0.025, 0.001)                # generate a mesh
+    y_range=np.arange(0, 1.3, 0.02)
+    x_surf, y_surf = np.meshgrid(x_range, y_range)
     Xpred = np.stack((x_surf.flatten(), y_surf.flatten()), axis=1)
 
     svr = GridSearchCV(SVR(kernel='rbf'), cv=5,
@@ -229,23 +240,23 @@ class CompressionStats(object):
                                "gamma": np.logspace(-2, 2, 10)})
     kr = KernelRegression(kernel="rbf", gamma=np.logspace(-2, 2, 10))
     t0 = time.time()
-    y_svr = svr.fit(Xb, yb).predict(Xpred)
+    y_svrb = svr.fit(Xb, yb).predict(Xpred)
     print("SVR complexity and bandwidth selected and model fitted in %.3f s" % (time.time() - t0))
 
     score_svr = svr.score(Xb, yb)
-    svr.fit(X1, y1)
+    y_svr1 = svr.fit(X1, y1).predict( np.expand_dims(x_range,1) )
     score_svr1 = svr.score(X1, y1)
-    svr.fit(X2, y2)
+    y_svr2 = svr.fit(X2, y2).predict( np.expand_dims(y_range,1) )
     score_svr2 = svr.score(X2, y2)
     
     t0 = time.time()
-    y_kr = kr.fit(Xb, yb).predict(Xpred)
+    y_krb = kr.fit(Xb, yb).predict(Xpred)
     print("KR including bandwith fitted in %.3f s" % (time.time() - t0))
     
     score_kr = kr.score(Xb, yb)
-    kr.fit(X1, y1)
+    y_kr1 = kr.fit(X1, y1).predict( np.expand_dims(x_range,1) )
     score_kr1 = kr.score(X1, y1)
-    kr.fit(X2, y2)
+    y_kr2 = kr.fit(X2, y2).predict( np.expand_dims(y_range,1) )
     score_kr2 = kr.score(X2, y2)
 
     print('R^2 / coeff determination:')
@@ -260,29 +271,39 @@ class CompressionStats(object):
     
     ###############################################################################
     # Visualize models
+#     fig = plt.figure()
+#     ax = fig.gca(projection='3d')               # to work in 3d
+#     
+#     z_surf = np.reshape(y_krb, x_surf.shape)          
+#     surf = ax.plot_surface(x_surf, y_surf, z_surf, cmap=cm.coolwarm, alpha=0.5, rstride=1, cstride=1);    # plot a 3d surface plot
+#     fig.colorbar(surf, shrink=0.5, aspect=5)
+# 
+#     ax.scatter(X[:,0], X[:,1], y, s=1, c='k')                        # plot a 3d scatter plot
+#     
+#     ax.set_xlabel('cls_score', fontsize=16)
+#     ax.set_ylabel('bbox_pred', fontsize=16)
+#     ax.set_zlabel('mAP', fontsize=16)
+#     plt.show()
+    
     fig = plt.figure()
-    ax = fig.gca(projection='3d')               # to work in 3d
-    plt.hold(True)
-    
-    z_surf = np.reshape(y_svr, x_surf.shape)          
-    surf = ax.plot_surface(x_surf, y_surf, z_surf, cmap=cm.coolwarm, alpha=0.5, rstride=1, cstride=1);    # plot a 3d surface plot
-    fig.colorbar(surf, shrink=0.5, aspect=5)
-
-    ax.scatter(X[:,0], X[:,1], y, s=1, c='k')                        # plot a 3d scatter plot
-    
-    ax.set_xlabel('cls_score', fontsize=16)
-    ax.set_ylabel('bbox_pred', fontsize=16)
-    ax.set_zlabel('mAP', fontsize=16)
+    plt.scatter(X1[:,0], y1, c='k', s=1, label='data')
+#     plt.plot(x_range, y_kr1, c='g', label='Kernel Regression')
+#     plt.plot(x_range, y_svr1, c='r', label='SVR')
+    plt.xlabel('cls_score')
+    plt.ylabel('mAP')
+    plt.ylim(0, 0.85)
+#     plt.title('Classification score difference as proxy for model performance/')
+    plt.legend()
     plt.show()
-    
-    
-    plt.scatter(X, y, c='k', s=1, label='data')
-#     plt.hold('on')
-    plt.plot(X, y_kr, c='g', label='Kernel Regression')
-    plt.plot(X, y_svr, c='r', label='SVR')
-    plt.xlabel('data')
-    plt.ylabel('target')
-    plt.title('Kernel regression versus SVR')
+
+    fig = plt.figure()
+    plt.scatter(X2[:,0], y2, c='k', s=1, label='data')
+#     plt.plot(y_range, y_kr2, c='g', label='Kernel Regression')
+#     plt.plot(y_range, y_svr2, c='r', label='SVR')
+    plt.xlabel('bbox_pred')
+    plt.ylabel('mAP')
+    plt.ylim(0, 0.85)
+#     plt.title('Kernel regression versus SVR')
     plt.legend()
     plt.show()
     
@@ -327,14 +348,45 @@ class CompressionStats(object):
     res = y - yopts
     plot_fit.plot_residual_tests(x, yopts, res, 'Spatial Average')
       
-  
+  def get_same_Kfrac_stats(self, labels):
+    new_stats = defaultdict( dict )
+    for data_dict in self._stats.values():
+      Kfrac = data_dict['Kfrac']
+      if Kfrac in new_stats:
+        continue
+      d_same_net = [d for d in self._stats.values() if d['Kfrac']==Kfrac]
+      for d in d_same_net:
+        for label in labels:
+          if label in d:
+            new_stats[Kfrac][label] = d[label]   
+    return new_stats   
+
+  def regression_data_split(self):
+    X = []
+    y = []
+    mAP_label = 'mAP_100_top150'
+    X1_label = 'diff_mean_cls_prob'
+    X2_label = 'diff_mean_rois'
+    stats = self.get_same_Kfrac_stats([mAP_label, X1_label, X2_label])
+    for _, d in stats.items():
+#       cls_score = d['mismatch_count_cls_score']
+#       bbox_pred = d['mismatch_count_bbox_pred']
+      cls_prob = d[X1_label]
+      diff_mean_rois = d[X2_label]
+      mAP = d[mAP_label]
+      X.append([cls_prob, diff_mean_rois])
+      y.append(mAP)
+    return X, y
+    
   def regression_data(self):
     X = []
     y = []
     
     for _, d in self._stats.items():
-      cls_score = d['diff_mean_cls_score']
-      bbox_pred = d['diff_mean_bbox_pred']
+#       cls_score = d['mismatch_count_cls_score']
+#       bbox_pred = d['mismatch_count_bbox_pred']
+      cls_score = d['diff_mean_cls_prob']
+#       bbox_pred = d['diff_mean_bbox_pred']
       mAP = d['mAP_100_top150']
       X.append([cls_score, bbox_pred])
       y.append(mAP)
@@ -390,7 +442,6 @@ class CompressionStats(object):
     layers_names = []
      
     for properties in plot_data:
-      
       type_label = properties[0]
       y_label = properties[1]
       percent_fmt = properties[2]

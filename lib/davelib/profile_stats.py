@@ -110,8 +110,7 @@ class ProfileStats(object):
   
   def __setstate__(self, d):
     self.__dict__.update(d)
-    self._param_stats, self._perf_stats, self._op_param_stats, self._op_perf_stats = \
-          self.extract_data()
+    self.extract_data()
   
   def count_delta(self, other, statsname, attrname):
     other_total = getattr( getattr(other, statsname), attrname)
@@ -180,11 +179,13 @@ class ProfileStats(object):
       
     self._param_stats = parse( self._param_stats_str )
     self._perf_stats = parse( self._perf_stats_str )
-    self._scope_all_stats = parse( self._scope_all_stats_str )
+    if hasattr(self, '_scope_all_stats_str'):
+      self._scope_all_stats = parse( self._scope_all_stats_str )
     
     self._op_param_stats = parse( self._op_param_stats_str )
     self._op_perf_stats = parse( self._op_perf_stats_str )
-    self._op_all_stats = parse( self._op_all_stats_str )
+    if hasattr(self, '_op_all_stats_str'):
+      self._op_all_stats = parse( self._op_all_stats_str )
 
 #     res = list(self._param_stats.DESCRIPTOR.fields_by_name.keys())
 #     fields = ['name', 'tensor_value', 'run_count', 'exec_micros', 'accelerator_exec_micros',
