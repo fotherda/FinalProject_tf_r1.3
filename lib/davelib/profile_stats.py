@@ -118,7 +118,7 @@ class ProfileStats(object):
       this_total = getattr( getattr(self, statsname), attrname)
       return  this_total - other_total
     except AttributeError as errno:
-      print("AttributeError error({0}): {1}".format(errno))
+      print("AttributeError error({0})".format(errno))
       return None
     except:
       print("Unexpected error:", sys.exc_info()[0])
@@ -130,7 +130,7 @@ class ProfileStats(object):
       this_total = getattr( getattr(self, statsname), attrname)
       return (this_total - other_total)/other_total
     except AttributeError as errno:
-      print("AttributeError error({0}): {1}".format(errno))
+      print("AttributeError error({0})".format(errno))
       return None
     except:
       print("Unexpected error:", sys.exc_info()[0])
@@ -140,7 +140,7 @@ class ProfileStats(object):
     try:
       return  total_bytes_count(self) - total_bytes_count(other)
     except AttributeError as errno:
-      print("AttributeError error({0}): {1}".format(errno))
+      print("AttributeError error({0})".format(errno))
       return None
     except:
       print("Unexpected error:", sys.exc_info()[0])
@@ -150,7 +150,7 @@ class ProfileStats(object):
     try:
       return  (total_bytes_count(self) - total_bytes_count(other)) / total_bytes_count(other)
     except AttributeError as errno:
-      print("AttributeError error({0}): {1}".format(errno))
+      print("AttributeError error({0})".format(errno))
       return None
     except:
       print("Unexpected error:", sys.exc_info()[0])
