@@ -113,20 +113,48 @@ class ProfileStats(object):
     self.extract_data()
   
   def count_delta(self, other, statsname, attrname):
-    other_total = getattr( getattr(other, statsname), attrname)
-    this_total = getattr( getattr(self, statsname), attrname)
-    return  this_total - other_total
+    try:
+      other_total = getattr( getattr(other, statsname), attrname)
+      this_total = getattr( getattr(self, statsname), attrname)
+      return  this_total - other_total
+    except AttributeError as (errno, strerror):
+      print("AttributeError error({0}): {1}".format(errno, strerror))
+      return None
+    except:
+      print("Unexpected error:", sys.exc_info()[0])
+      raise
     
   def frac_delta(self, other, statsname, attrname):
-    other_total = getattr( getattr(other, statsname), attrname)
-    this_total = getattr( getattr(self, statsname), attrname)
-    return (this_total - other_total)/other_total
-           
+    try:
+      other_total = getattr( getattr(other, statsname), attrname)
+      this_total = getattr( getattr(self, statsname), attrname)
+      return (this_total - other_total)/other_total
+    except AttributeError as (errno, strerror):
+      print("AttributeError error({0}): {1}".format(errno, strerror))
+      return None
+    except:
+      print("Unexpected error:", sys.exc_info()[0])
+      raise
+
   def total_bytes_count_delta(self, other):   
-    return  total_bytes_count(self) - total_bytes_count(other)
+    try:
+      return  total_bytes_count(self) - total_bytes_count(other)
+    except AttributeError as (errno, strerror):
+      print("AttributeError error({0}): {1}".format(errno, strerror))
+      return None
+    except:
+      print("Unexpected error:", sys.exc_info()[0])
+      raise
         
   def total_bytes_frac_delta(self, other):   
-    return  (total_bytes_count(self) - total_bytes_count(other)) / total_bytes_count(other)
+    try:
+      return  (total_bytes_count(self) - total_bytes_count(other)) / total_bytes_count(other)
+    except AttributeError as (errno, strerror):
+      print("AttributeError error({0}): {1}".format(errno, strerror))
+      return None
+    except:
+      print("Unexpected error:", sys.exc_info()[0])
+      raise
         
 #   def total_bytes_count_delta(self, other):   
 #     other_total = other._param_stats.total_requested_bytes + \
