@@ -16,10 +16,10 @@ from collections import OrderedDict,defaultdict
 from matplotlib.ticker import MaxNLocator, FuncFormatter
 from sklearn import linear_model
 # from sklearn import cross_validation
-from scipy import optimize
-from scipy.optimize import least_squares, minimize
-import pyqt_fit.nonparam_regression as smooth
-from pyqt_fit import npr_methods, plot_fit
+# from scipy import optimize
+# from scipy.optimize import least_squares, minimize
+# import pyqt_fit.nonparam_regression as smooth
+# from pyqt_fit import npr_methods, plot_fit
 from kernel_regression import KernelRegression
 from sklearn.svm import SVR
 # from sklearn.grid_search import GridSearchCV
@@ -327,26 +327,26 @@ class CompressionStats(object):
     plt.legend(loc="best")
     plt.show()
 
-  def multivar_regress6(self):
-    X, y = self.regression_data()
-    X = np.array(X)
-    x = X[:,0]
-    y = np.array(y)
-    
-    k0 = smooth.NonParamRegression(x, y, method=npr_methods.SpatialAverage())
-    k0.fit()
-    
-    grid = np.r_[0:2.5:512j]
-#     plt.plot(grid, f(grid), 'r--', label='Reference')
-    plt.plot(x, y, '.', alpha=0.5, label='Data')
+#   def multivar_regress6(self):
+#     X, y = self.regression_data()
+#     X = np.array(X)
+#     x = X[:,0]
+#     y = np.array(y)
+#     
+#     k0 = smooth.NonParamRegression(x, y, method=npr_methods.SpatialAverage())
+#     k0.fit()
+#     
+#     grid = np.r_[0:2.5:512j]
+# #     plt.plot(grid, f(grid), 'r--', label='Reference')
+#     plt.plot(x, y, '.', alpha=0.5, label='Data')
+# #     plt.legend(loc='best')
+#     
+#     plt.plot(grid, k0(grid), label="Spatial Averaging", linewidth=2)
 #     plt.legend(loc='best')
-    
-    plt.plot(grid, k0(grid), label="Spatial Averaging", linewidth=2)
-    plt.legend(loc='best')
-    
-    yopts = k0(x)
-    res = y - yopts
-    plot_fit.plot_residual_tests(x, yopts, res, 'Spatial Average')
+#     
+#     yopts = k0(x)
+#     res = y - yopts
+#     plot_fit.plot_residual_tests(x, yopts, res, 'Spatial Average')
       
   def get_same_Kfrac_stats(self, labels):
     new_stats = defaultdict( dict )

@@ -309,8 +309,6 @@ class ExperimentController(object):
     self._compression_stats.save()
               
     scope_idx=1
-#     compressed_layers = remove_layers_after_block3(compressed_layers)
-#     compressed_layers.remove('conv1')
     for l, layer_name in enumerate(compressed_layers):
       if l not in layer_idxs:
         continue
