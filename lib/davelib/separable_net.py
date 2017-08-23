@@ -6,7 +6,7 @@ Created on 29 Jul 2017
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
-
+import datetime
 
 from model.config import cfg
 from davelib.resnet_v1_sep import resnetv1_sep
@@ -188,7 +188,7 @@ class SeparableNet(object):
         if plot:
           self.plot_outputs(base_output, sep_output, name)
         
-        mismatch_cnt += mismatch_count(base_output, sep_output)
+#         mismatch_cnt += mismatch_count(base_output, sep_output)
         
         base_output_trimmed = self.trim_outputs(base_output, sep_output)
         diff = np.subtract(base_output_trimmed, sep_output)
@@ -211,11 +211,14 @@ class SeparableNet(object):
       compression_stats.set(self._net_desc, 'diff_mean_'+name, diff_mean_abs)
       compression_stats.set(self._net_desc, 'diff_stdev_'+name, diff_stdev_abs)
       compression_stats.set(self._net_desc, 'diff_max_'+name, diff_max_abs)
-      compression_stats.set(self._net_desc, 'mismatch_count_'+name, mismatch_cnt)
+#       compression_stats.set(self._net_desc, 'mismatch_count_'+name, mismatch_cnt)
 
 #         num_imgs = 4952
     if len(num_imgs_list) > 0:
-      mAP_dict = run_test_metric(num_imgs_list, self._net_sep, sess)
+      suffix = datetime.datetime.now().strftime("%y%m%d_%H%M%S")
+      det_filename = "_".join(['default/res101_comp_net', suffix]) # e.g. 'mylogfile_120508_171442'
+      mAP_dict = run_test_metric(num_imgs_list, self._net_sep, sess, filename=det_filename)
+      compression_stats.set(self._net_desc, 'detections_file', det_filename)
       for num_imgs, mAP in mAP_dict.items():
         compression_stats.set(self._net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
         compression_stats.set(self._net_desc, 'mAP_%d_top%d_delta'%

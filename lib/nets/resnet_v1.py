@@ -233,8 +233,6 @@ class resnetv1(Network):
 
       # rpn
       rpn = self.rpn_convolution(net_conv4, is_training, initializer)
-#       rpn = slim.conv2d(net_conv4, 512, [3, 3], trainable=is_training, weights_initializer=initializer,
-#                         scope="rpn_conv/3x3")
       self._act_summaries.append(rpn)
       rpn_cls_score = slim.conv2d(rpn, self._num_anchors * 2, [1, 1], trainable=is_training,
                                   weights_initializer=initializer,

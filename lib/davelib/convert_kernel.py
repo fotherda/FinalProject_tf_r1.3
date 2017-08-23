@@ -67,7 +67,7 @@ class ExperimentController(object):
 #     final_layer = LayerName('block3/unit_23/bottleneck_v1/conv3')
 
     
-    if False and os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
+    if os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
 #     if False and os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
       self._base_outputs_list = pi.load( open( 'base_outputs.pi', "rb" ) )
       self._base_profile_stats = pi.load( open( 'base_profile_stats.pi', "rb" ) )
@@ -438,8 +438,9 @@ def pre_tasks():
 def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
 #   show_all_variables(show=True)
   
-  exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '13')
-  exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
+  exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '15')
+  exp_controller.run_exp(num_imgs_list=[3,5])
+#   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)
 #   exp_controller.optimise_for_memory(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')
   
