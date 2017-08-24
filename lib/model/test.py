@@ -197,7 +197,7 @@ def test_net(sess, net, imdb, weights_filename, max_per_image=100, thresh=0.05):
   imdb.evaluate_detections(all_boxes, output_dir)
 
 def test_net_with_sample(sess, net, imdb, weights_filename, sample_images, max_per_image=100,
-                         thresh=0.05, sample_names_dict=None):
+                         thresh=0.05, sample_names_dict=None, use_saved_detections=False):
   np.random.seed(cfg.RNG_SEED)
   """Test a Fast R-CNN network on an image database."""
   num_images = len(sample_images)
@@ -212,50 +212,51 @@ def test_net_with_sample(sess, net, imdb, weights_filename, sample_images, max_p
   # timers
   _t = {'im_detect' : Timer(), 'misc' : Timer()}
 
-  det_file = os.path.join(output_dir, 'detections.pkl')
-  with open(det_file, 'rb') as f:
-    all_boxes = pickle.load(f)
-
-#   for i in range(num_images):
-#      
-#     im = cv2.imread(imdb.image_path_from_index(sample_images[i]))
-#  
-#     _t['im_detect'].tic()
-#     scores, boxes = im_detect(sess, net, im)
-#     _t['im_detect'].toc()
-#  
-#     _t['misc'].tic()
-#  
-#     # skip j = 0, because it's the background class
-#     for j in range(1, imdb.num_classes):
-#       inds = np.where(scores[:, j] > thresh)[0]
-#       cls_scores = scores[inds, j]
-#       cls_boxes = boxes[inds, j*4:(j+1)*4]
-#       cls_dets = np.hstack((cls_boxes, cls_scores[:, np.newaxis])) \
-#         .astype(np.float32, copy=False)
-#       keep = nms(cls_dets, cfg.TEST.NMS)
-#       cls_dets = cls_dets[keep, :]
-#       all_boxes[j][i] = cls_dets
-#  
-#     # Limit to max_per_image detections *over all classes*
-#     if max_per_image > 0:
-#       image_scores = np.hstack([all_boxes[j][i][:, -1]
-#                     for j in range(1, imdb.num_classes)])
-#       if len(image_scores) > max_per_image:
-#         image_thresh = np.sort(image_scores)[-max_per_image]
-#         for j in range(1, imdb.num_classes):
-#           keep = np.where(all_boxes[j][i][:, -1] >= image_thresh)[0]
-#           all_boxes[j][i] = all_boxes[j][i][keep, :]
-#     _t['misc'].toc()
-#  
-#     if i % 100 == 0:
-#       print('im_detect: {:d}/{:d} {:.3f}s {:.3f}s' \
-#         .format(i + 1, num_images, _t['im_detect'].diff,
-#             _t['misc'].diff))
-#  
-#   det_file = os.path.join(output_dir, 'detections.pkl')
-#   with open(det_file, 'wb') as f:
-#     pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
+  if use_saved_detections:
+    det_file = os.path.join(output_dir, 'detections.pkl')
+    with open(det_file, 'rb') as f:
+      all_boxes = pickle.load(f)
+  else:
+    for i in range(num_images):
+        
+      im = cv2.imread(imdb.image_path_from_index(sample_images[i]))
+    
+      _t['im_detect'].tic()
+      scores, boxes = im_detect(sess, net, im)
+      _t['im_detect'].toc()
+    
+      _t['misc'].tic()
+    
+      # skip j = 0, because it's the background class
+      for j in range(1, imdb.num_classes):
+        inds = np.where(scores[:, j] > thresh)[0]
+        cls_scores = scores[inds, j]
+        cls_boxes = boxes[inds, j*4:(j+1)*4]
+        cls_dets = np.hstack((cls_boxes, cls_scores[:, np.newaxis])) \
+          .astype(np.float32, copy=False)
+        keep = nms(cls_dets, cfg.TEST.NMS)
+        cls_dets = cls_dets[keep, :]
+        all_boxes[j][i] = cls_dets
+    
+      # Limit to max_per_image detections *over all classes*
+      if max_per_image > 0:
+        image_scores = np.hstack([all_boxes[j][i][:, -1]
+                      for j in range(1, imdb.num_classes)])
+        if len(image_scores) > max_per_image:
+          image_thresh = np.sort(image_scores)[-max_per_image]
+          for j in range(1, imdb.num_classes):
+            keep = np.where(all_boxes[j][i][:, -1] >= image_thresh)[0]
+            all_boxes[j][i] = all_boxes[j][i][keep, :]
+      _t['misc'].toc()
+    
+      if i % 100 == 0:
+        print('im_detect: {:d}/{:d} {:.3f}s {:.3f}s' \
+          .format(i + 1, num_images, _t['im_detect'].diff,
+              _t['misc'].diff))
+    
+    det_file = os.path.join(output_dir, 'detections.pkl')
+    with open(det_file, 'wb') as f:
+      pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
 
   print('Evaluating detections')
   ret_dict = {}
