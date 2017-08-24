@@ -116,7 +116,8 @@ class ProfileStats(object):
     try:
       other_total = getattr( getattr(other, statsname), attrname)
       this_total = getattr( getattr(self, statsname), attrname)
-      return  this_total - other_total
+#       return  this_total - other_total
+      return None
     except AttributeError as errno:
       print("AttributeError error({0})".format(errno))
       return None
