@@ -63,14 +63,26 @@ class CompressedNetDescription(dict):
    
   def __eq__(self, other):
     if isinstance(other, self.__class__):
-      return self.__key() == other.__key()
+      if not self.__key() and not other.__key():
+        return True
+      else:
+        return self.__key() == other.__key()
     return False
   
   def __hash__(self):
     return hash(self.__key())
   
   def __lt__(self, other):
-    return list(self.keys())[0] < list(other.keys())[0]
+    if not self:
+      if not other:
+        return True
+      else:
+        return True
+    elif not other:
+      return False
+    else:
+      return list(self.keys())[0] < list(other.keys())[0]
+#     return list(self.keys())[0] < list(other.keys())[0]
   
 #   def __str__(self):
 #     return '\n'.join(map(str, sorted(self.items())))
@@ -631,7 +643,7 @@ class CompressionStats(object):
     return None
       
       
-  def plot_correlation_btw_stats(self, other_stats, type_label, labels=None):
+  def plot_correlation_btw_stats(self, other_stats, type_label='mAP', labels=None):
 #     legend_labels = []
     if not labels:
       labels=[]
@@ -639,7 +651,7 @@ class CompressionStats(object):
     xs = []
     ys = []
 
-    for net_desc, data_dict in sorted(self._stats . items()):
+    for net_desc, data_dict in sorted(self._stats.items()):
       value = self.get_key_value_match(data_dict, type_label)
       if value:
         other_data_dict = other_stats.data_dict_from_Kfrac(net_desc.get_Kfrac())
@@ -651,8 +663,6 @@ class CompressionStats(object):
           labels.append('%.2f'%net_desc.get_Kfrac())
 
       plt.plot(xs, ys,'.')
-  
-      
       
   #     x1,x2,y1,y2 = plt.axis()
   #     plt.axis((0.7,0.8,y1,y2))
@@ -685,6 +695,45 @@ class CompressionStats(object):
     nxs = np.vstack((xs,ys))
     corr_coeff = np.corrcoef(nxs)
     plt.text(0.2, 0.65, 'corr coeff = %.3f'%corr_coeff[0,1], fontsize=16, horizontalalignment='center', verticalalignment='center')
+    plt.show()  
+     
+       
+  def plot_correlation_btw_mAP_num_imgs(self):
+    _, ax = plt.subplots()
+    n_rows = 3
+    n_columns = 3
+    
+    def get_mAPs():
+      values = [v for v in list(self._stats.values())[0] if 'mAP' in v and 'delta' not in v]
+      return sorted(values, key=lambda value: int(value.split('_')[1]))
+      
+    mAP_labels = get_mAPs()
+    top_mAP_label = mAP_labels[-1]
+    
+    for plt_idx, mAP_label in enumerate(mAP_labels[:-1]):
+      xs = []
+      ys = []
+      for _, data_dict in sorted(self._stats.items()):
+        mAP = data_dict[mAP_label]
+        top_mAP = data_dict[top_mAP_label]
+        ys.append(mAP)
+        xs.append(top_mAP)
+      ax = plt.subplot(n_rows, n_columns, plt_idx+1)
+      ax.plot(xs, ys,'.r', markersize=5.0)
+      if plt_idx > 5:
+        ax.set_xlabel('mAP #images=4952', fontsize=10)
+      ax.set_ylabel('mAP #images=%s'%(mAP_label.split('_')[1]), fontsize=10)
+      nxs = np.vstack((xs,ys))
+      corr_coeff = np.corrcoef(nxs)
+      plt.text(0.2, 0.65, 'r = %.3f'%corr_coeff[0,1], fontsize=10, horizontalalignment='center', verticalalignment='center')
+      #fit function
+      a, b = np.polyfit(np.array(xs), np.array(ys), deg=1)
+      f = lambda x: a*x + b
+      x = np.array([0,0.85])
+      ax.plot(x,f(x),lw=0.2, c="k")
+      ax.set_xlim([0,0.85])
+      ax.set_ylim([0,0.85])
+      
     plt.show()  
      
        

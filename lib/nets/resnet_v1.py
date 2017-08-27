@@ -29,6 +29,8 @@ from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import layers
 from model.config import cfg
 from tensorflow.contrib.layers.python.layers import utils
+from davelib.utils import remove_net_suffix
+
 
 def resnet_arg_scope(is_training=True,
                      weight_decay=cfg.TRAIN.WEIGHT_DECAY,
@@ -101,16 +103,6 @@ class resnetv1(Network):
   # for images of different sizes: sometimes 0, sometimes 1
   def build_base(self):
     with tf.variable_scope(self._resnet_scope, self._resnet_scope):
-#       with arg_scope(
-#         [slim.conv2d],
-#         weights_regularizer=None,
-#         weights_initializer=None,
-#         trainable=False,
-# #         activation_fn=nn_ops.relu,
-#         activation_fn=None,
-#         normalizer_fn=None,
-#         normalizer_params=None,
-#         biases_initializer=None): #make first layer clean, no BN no biases
 
       net = resnet_utils.conv2d_same(self._image, 64, 7, stride=2, scope='conv1')
       self._predictions[self._resnet_scope+'/conv1'] = net
@@ -340,17 +332,17 @@ class resnetv1(Network):
         sess.run(tf.assign(self._variables_to_fix[self._resnet_scope + '/conv1/weights:0'], 
                            tf.reverse(conv1_rgb, [2])))
         
-  def get_outputs_multi_image(self, blobs_list, output_layers, sess):
+  def get_outputs_multi_image(self, blobs_list, output_layers, sess, net_desc=None):
     outputs_list = []
     run_metadata_list = []
     
     for blobs in blobs_list:
-      outputs, run_metadata = self.get_outputs(blobs, output_layers, sess)
+      outputs, run_metadata = self.get_outputs(blobs, output_layers, sess, net_desc)
       outputs_list.append(outputs)
       run_metadata_list.append(run_metadata)
     return outputs_list, run_metadata_list
 
-  def get_outputs(self, blobs, output_layers, sess):
+  def get_outputs(self, blobs, output_layers, sess, net_desc=None):
     feed_dict = {self._image: blobs['data'],
                  self._im_info: blobs['im_info'],
                  self._gt_boxes: np.zeros((10,5))}
@@ -381,20 +373,7 @@ class resnetv1(Network):
 #     writer.add_run_metadata(run_metadata, 'step1')
 #     writer.flush()
     
-    return outputs, run_metadata
-  
-  
-def remove_net_suffix(input_str, net_root):
-  # nasty function to convert e.g. resnet_v1_101_2/block2/unit_1/bottleneck_v1/
-  # to                             resnet_v1_101/block2/unit_1/bottleneck_v1/
-  # hack to deal with the fact tf adds suffix to scope original name
-  idx = input_str.find(net_root)
-  if idx == -1:
-    return input_str
-  else:
-    idx = input_str.index('/')
-    return net_root + input_str[idx:]
-  
+    return outputs, run_metadata  
   
   
   

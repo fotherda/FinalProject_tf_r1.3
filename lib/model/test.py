@@ -209,11 +209,11 @@ def test_net_with_sample(sess, net, imdb, weights_filename, sample_images, max_p
          for _ in range(imdb.num_classes)]
 
   output_dir = get_output_dir(imdb, weights_filename)
+  det_file = os.path.join(output_dir, 'detections.pkl')
   # timers
   _t = {'im_detect' : Timer(), 'misc' : Timer()}
 
   if use_saved_detections:
-    det_file = os.path.join(output_dir, 'detections.pkl')
     with open(det_file, 'rb') as f:
       all_boxes = pickle.load(f)
   else:
@@ -254,7 +254,6 @@ def test_net_with_sample(sess, net, imdb, weights_filename, sample_images, max_p
           .format(i + 1, num_images, _t['im_detect'].diff,
               _t['misc'].diff))
     
-    det_file = os.path.join(output_dir, 'detections.pkl')
     with open(det_file, 'wb') as f:
       pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
 

@@ -193,3 +193,13 @@ def show_all_variables(show, *args):
     print("[Total] variable size: %s" % "{:,}".format(total_count))
   return total_count
 
+def remove_net_suffix(input_str, net_root):
+  # nasty function to convert e.g. resnet_v1_101_2/block2/unit_1/bottleneck_v1/
+  # to                             resnet_v1_101/block2/unit_1/bottleneck_v1/
+  # hack to deal with the fact tf adds suffix to scope original name
+  idx = input_str.find(net_root)
+  if idx == -1:
+    return input_str
+  else:
+    idx = input_str.index('/')
+    return net_root + input_str[idx:]

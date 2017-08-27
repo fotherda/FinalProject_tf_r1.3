@@ -9,104 +9,37 @@ import tensorflow as tf
 import datetime
 
 from model.config import cfg
-from davelib.resnet_v1_sep import resnetv1_sep
+from davelib.resnet_v1_pluri import resnetv1_pluri
 from davelib.layer_name import LayerName
 from tensorflow.python.framework import ops
-from collections import OrderedDict
 from davelib.profile_stats import ProfileStats
+from davelib.separable_net import *
 from davelib.utils import show_all_variables, stdout_redirector, run_test_metric
 
 
-def mismatch_count(base_outputs, sep_outputs):
-  count = 0
-  for i in range(base_outputs.shape[0]):
-    base_output = base_outputs[i]
-    sep_output = sep_outputs[i]
-    max_idx_base = np.argmax(base_output)
-    max_idx_sep = np.argmax(sep_output)
-    if max_idx_base != max_idx_sep:
-      count += 1
-  return count    
-  
-def check_reconstruction_error(V, H, W, K):
-  s = W.shape
-  assert s[0] == s[1]
-  C = s[2]
-  d = s[0]
-  N = s[3]
-  
-  f_norm_sum = 0
-  plots = np.zeros((2,N,d,d))
-  for n in range(N):
-    for c in range(C):
-      
-      sum_prod = np.zeros((d,d))
-      for k in range(K):
-        p = np.outer(V[c,k,:], H[n,k,:])
-        sum_prod += p
-      diff = np.subtract(W[:,:,c,n], sum_prod)
-      f_norm = np.linalg.norm(diff, ord='fro')
-      f_norm_sum += f_norm
-      plots[0,n,:,:] = sum_prod
-      plots[1,n,:,:] = W[:,:,c,n]
-  
-  return f_norm_sum, plots
-
-def plot_filters(plots_dict, n):
-  fig = plt.figure(figsize=(15,8))
-  n_columns = n + 1
-  n_rows = len(plots_dict) + 1
-  
-  a = plt.subplot(n_rows, n_columns, 1)
-  a.text(0.75, 0.5, 'Base Model\nFilter', fontsize=16, horizontalalignment='center', verticalalignment='center')
-  imgs = plots_dict[ list(plots_dict.keys())[0] ]
-  for i in range(n):
-    plt.subplot(n_rows, n_columns, i+2)
-    plt.title('channel ' + str(i+1), fontsize=16)
-    plt.imshow(imgs[1,i,:,:], interpolation="nearest", cmap="gray")
-  
-  for j, (k, imgs) in enumerate(plots_dict.items()):
-    a = plt.subplot(n_rows, n_columns, (j+1)*n_columns + 1)
-    a.text(0.75, 0.5, 'Low-rank\nFilter\nK=' + str(k), fontsize=16,horizontalalignment='center', verticalalignment='center')
-    for i in range(n):
-      plt.subplot(n_rows, n_columns, (j+1)*n_columns+i+2)
-      plt.imshow(imgs[0,i,:,:], interpolation="nearest", cmap="gray")
-
-  axes = fig.get_axes()
-  for ax in axes:
-    ax.axis('off')
-  plt.tight_layout()
-  plt.show()
-
-
-class SeparableNet(object):
+class PluripotentNet(SeparableNet):
   
   def __init__(self, scope_idx, base_net, sess, saved_model_path, base_weights_dict, 
-               net_desc, base_variables):
+               net_desc_pluri, base_variables):
+    SeparableNet.__init__(self, scope_idx, base_net, sess, saved_model_path, base_weights_dict, 
+               net_desc_pluri, base_variables)
 
-    self._base_net = base_net
-    self._base_weights_dict = base_weights_dict
-    self._net_desc = net_desc
-    self._sess = sess
-    self._saved_model_path = saved_model_path
-    self._base_variables = base_variables
 
-    self.build_net(scope_idx, base_weights_dict, net_desc)
-    
   def build_net(self, scope_idx, base_weights_dict, net_desc):
-    self._net_sep = resnetv1_sep(scope_idx, batch_size=1, num_layers=101, 
+    self._net_sep = resnetv1_pluri(scope_idx, batch_size=1, num_layers=101, 
                         base_weights_dict=base_weights_dict, net_desc=net_desc)
     self._net_sep.create_architecture(self._sess, "TEST", 21,
                           tag='default', anchor_scales=[8, 16, 32])
-#     show_all_variables(True, self._net_sep.get_scope())
-
+    show_all_variables(True, self._net_sep.get_scope())
+ 
     self.assign_trained_weights_to_unchanged_layers()
     self.assign_trained_weights_to_separable_layers()  
+
     
   def assign_trained_weights_to_unchanged_layers(self):
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
       restore_var_dict = {}
-
+ 
       for v in self._base_variables:
         name_full = v.op.name
         layer_name = LayerName(name_full, 'net_layer_weights')
@@ -114,23 +47,36 @@ class SeparableNet(object):
           continue
 #         print(name_full + ' ' + layer_name )
         restore_var_dict[name_full] = tf.get_variable(layer_name.layer_weights()) 
-
+ 
     saver = tf.train.Saver(restore_var_dict)
     saver.restore(self._sess, self._saved_model_path)
     
-  
+  def get_batch_norm_vars(self, base_weights_dict, layer_name_to_match):
+    all_ops = []
+    for layer_name, source_weights in base_weights_dict.items():
+      if layer_name_to_match == layer_name and 'BatchNorm' in layer_name:
+        dest_weights = tf.get_variable(layer_name_to_match.layer_weights())
+        assign_op = tf.assign(dest_weights, source_weights)
+        all_ops.extend(assign_op)
+        
+    return all_ops
+    
   def assign_trained_weights_to_separable_layers(self):
     all_ops = []
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
-      for layer_name in self._net_desc:
-#       for layer_name, source_weights in self._comp_weights_dict.items():
+      for layer_name, Ks in self._net_desc.items():
         source_weights = self._base_weights_dict[layer_name]
-        layer1_name = LayerName(layer_name +'_sep/weights','layer_weights')
-        dest_weights_1 = tf.get_variable(layer1_name.layer_weights())
-        dest_weights_2 = tf.get_variable(layer_name.layer_weights())
-        K = self._net_desc[layer_name]
-        ops = self.get_assign_ops(source_weights, dest_weights_1, dest_weights_2, K)
-        all_ops.extend(ops)
+        
+        for K in Ks:
+          layer1_name = LayerName(layer_name +'_sep_K' + str(K) + '/weights','layer_weights')
+          layer2_name = LayerName(layer_name +'_K' + str(K) + '/weights','layer_weights')
+          dest_weights_1 = tf.get_variable(layer1_name.layer_weights())
+          dest_weights_2 = tf.get_variable(layer2_name.layer_weights())
+          ops = self.get_assign_ops(source_weights, dest_weights_1, dest_weights_2, K)
+          all_ops.extend(ops)
+          
+        batch_norm_ops = self.get_batch_norm_vars(self._base_weights_dict, layer_name)
+        all_ops.extend(batch_norm_ops)
           
       self._sess.run(all_ops)
 
@@ -169,13 +115,14 @@ class SeparableNet(object):
       base_output = base_output[:s[0],:]
     return base_output
 
-  def run_performance_analysis(self, blobs_list, sess, base_outputs_list, output_layers, 
+  def run_performance_analysis(self, net_desc, blobs_list, sess, base_outputs_list, output_layers, 
                                compression_stats, base_profile_stats, mAP_base_net=None, 
                                num_imgs_list=[], plot=False, run_profile_stats=True):
 
     if base_outputs_list is None:
       base_outputs_list = self._base_net.get_outputs_multi_image(blobs_list, output_layers, sess)
-    sep_outputs_list, run_metadata_list = self._net_sep.get_outputs_multi_image(blobs_list, output_layers, sess)
+    sep_outputs_list, run_metadata_list = self._net_sep.get_outputs_multi_image(
+                                              blobs_list, output_layers, sess, net_desc)
 
     for name in output_layers: # probably cls_score and bbox_pred - the 2 final layers
       diffs_cat = None
