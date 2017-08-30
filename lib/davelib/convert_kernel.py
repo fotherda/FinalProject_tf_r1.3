@@ -331,7 +331,7 @@ class ExperimentController(TensorFlowTestCase):
 #     compressed_layers = remove_bottleneck_shortcut_layers(compressed_layers)
 #     compressed_layers = remove_bottleneck_not_unit1(compressed_layers)
 #     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2')]
-    compressed_layers = [LayerName('rpn_conv/3x3')]
+#     compressed_layers = [LayerName('rpn_conv/3x3')]
 #     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2'), LayerName('rpn_conv/3x3')]
     
     #     Ks = range(1,11)
@@ -354,7 +354,7 @@ class ExperimentController(TensorFlowTestCase):
 #       self._compressed_layers = [layer_name]
       self._compressed_layers = compressed_layers
       
-      Kfracs = [-1,1.0]
+      Kfracs = [0.1,1.0,-1]
 #       Kfracs = np.arange(0.01, 1.0, 0.025)
 #       Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
 #       Kfracs = [0.32,0.34,0.36,0.38]
@@ -499,7 +499,7 @@ def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
 #   show_all_variables(show=True)
   
   exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '16')
-  exp_controller.run_exp(num_imgs_list=[5])
+  exp_controller.run_exp(num_imgs_list=[10])
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)
 #   exp_controller.optimise_for_memory(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')

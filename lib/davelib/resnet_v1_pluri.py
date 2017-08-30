@@ -44,18 +44,8 @@ class resnetv1_pluri(resnetv1_sep):
     self.bottleneck_func = self.bottleneck
     self._sess = sess
     self._end_points_collection = self._resnet_scope + '_end_points'
-#     self._K_active_placeholder = tf.placeholder(tf.int32, shape=(len(net_desc)), name='K_active_placeholder')
-#     self._layer_active_placeholder = tf.placeholder(tf.string, shape=(len(net_desc)), name='layer_active_placeholder')
     self._K_by_layer_table = tf.contrib.lookup.MutableHashTable(key_dtype=tf.string,
                                            value_dtype=tf.int64, default_value=-1)
-#     self._K_by_layer_table = tf.contrib.lookup.HashTable(
-#       tf.contrib.lookup.KeyValueTensorInitializer(self._layer_active_placeholder, 
-#                                                   self._K_active_placeholder), -1, 
-#                                                           name='K_by_layer_table')
-#     self._active_Ks_placeholder = tf.placeholder(tf.int32, shape=(len(net_desc)), name='K_active_placeholder')
-#     self._layer_to_active_Ks_dict = {}
-#     for i, layer_name in enumerate(net_desc.keys()):
-#       self._layer_to_active_Ks_dict[layer_name] = i
 
 #   @add_arg_scope
   def bottleneck(self,
@@ -147,7 +137,7 @@ class resnetv1_pluri(resnetv1_sep):
     layer_name = 'rpn_conv/3x3'
 
     def build_layer(K):
-      nonlocal net_conv4, is_training, initializer, layer_name
+#       nonlocal net_conv4, is_training, initializer, layer_name
       with arg_scope(
         [slim.conv2d],
         trainable=False,
@@ -188,19 +178,47 @@ class resnetv1_pluri(resnetv1_sep):
     
     return tf.case(case_dict, default=uncompressed_func, exclusive=True)
   
+#   def separate_conv_layer(self, inputs, num_output_channels, kernel_size, stride, rate,
+#                           layer_name, full_layer_name):
+# 
+#     uncompressed_net = resnet_utils.conv2d_same(inputs, num_output_channels, kernel_size, 
+#                                                 stride=stride, scope=layer_name)
+#     if layer_name not in self._net_desc: 
+#       return uncompressed_net
+# 
+#     K_active = self._K_by_layer_table.lookup( tf.constant(layer_name, dtype=tf.string) )
+# 
+#     case_dict = {}
+#     Ks = self._net_desc[full_layer_name]
+#     for K in Ks:
+#       with arg_scope(
+#         [slim.conv2d],
+#         weights_regularizer=None,
+#         weights_initializer=None,
+#         trainable=False,
+#         activation_fn=None,
+#         normalizer_fn=None,
+#         normalizer_params=None,
+#         biases_initializer=None): #make first layer clean, no BN no biases no activation func
+#   
+#         layer1_name = LayerName(layer_name + '_sep_K'+str(K))
+#         net = conv2d_same(inputs, K, kernel_size=(kernel_size,1), stride=[stride,1],
+#                            scope=layer1_name)
+#       
+#         layer2_name = LayerName(layer_name + '_K'+str(K))
+#       with slim.arg_scope(resnet_arg_scope(is_training=False)):
+#         net = conv2d_same(net, num_output_channels, kernel_size=(1,kernel_size), 
+#                           stride=[1,stride], scope=layer2_name)
+#         
+#       case_dict[ tf.equal(K_active, tf.constant(K, dtype=tf.int64)) ] = lambda: net
+#     
+#     output = tf.case(case_dict, exclusive=True)
+# #     output = tf.case(case_dict, default=lambda: uncompressed_net, exclusive=True)
+#     return output
+  
   def separate_conv_layer(self, inputs, num_output_channels, kernel_size, stride, rate,
                           layer_name, full_layer_name):
-
-    uncompressed_net = resnet_utils.conv2d_same(inputs, num_output_channels, kernel_size, 
-                                                stride=stride, scope=layer_name)
-    if layer_name not in self._net_desc: 
-      return uncompressed_net
-
-    K_active = self._K_by_layer_table.lookup( tf.constant(layer_name, dtype=tf.string) )
-
-    case_dict = {}
-    Ks = self._net_desc[full_layer_name]
-    for K in Ks:
+    def build_layer(K):
       with arg_scope(
         [slim.conv2d],
         weights_regularizer=None,
@@ -219,40 +237,60 @@ class resnetv1_pluri(resnetv1_sep):
       with slim.arg_scope(resnet_arg_scope(is_training=False)):
         net = conv2d_same(net, num_output_channels, kernel_size=(1,kernel_size), 
                           stride=[1,stride], scope=layer2_name)
-        
-      case_dict[ tf.equal(K_active, tf.constant(K, dtype=tf.int64)) ] = lambda: net
+      return net
+
+    uncompressed_net = None
+    def uncompressed_func():
+      nonlocal uncompressed_net
+      if uncompressed_net is None:#need this as irritatingly the tf.case() calls it twice
+        uncompressed_net = resnet_utils.conv2d_same(inputs, num_output_channels, kernel_size, 
+                                                stride=stride, scope=layer_name)
+      return uncompressed_net
+
+    K_active = self._K_by_layer_table.lookup( tf.constant(full_layer_name, dtype=tf.string) )
+    case_dict = {}    
+    Ks = self._net_desc[full_layer_name]
+    for K in Ks:
+      match_cond = tf.equal(K_active, tf.constant(K, dtype=tf.int64))
+      case_dict[match_cond] = lambda K_=K: build_layer(K_)
     
-    output = tf.case(case_dict, exclusive=True)
-#     output = tf.case(case_dict, default=lambda: uncompressed_net, exclusive=True)
-#     output = net
-#     output = uncompressed_net
-    return output
+    return tf.case(case_dict, default=uncompressed_func, exclusive=True)
+
   
-#   def set_active_path_through_net(self, net_desc):  
-#     self._active_Ks = np.zeros( len(net_desc) )
-#     for layer, K in net_desc.items():
-#       self._active_Ks[ self._layer_to_active_Ks_dict[layer] ] = K[0]
 
   def set_active_path_through_net(self, net_desc, sess):   
     self._active_Ks = np.zeros( len(net_desc) ) 
-#     data = self._K_by_layer_table.export()
-#     d = sess.run(data)
+    keys_tensor, _ = self._K_by_layer_table.export()
+    layers = sess.run([keys_tensor])
   
+    #first set to -1 all the entries in the table that aren't in this net_desc
+#     non_empty_entries = [tbl_key for tbl_key in layers[0] if len(tbl_key)>0]
+    keys = []
+    values=[]
+    for tbl_key in layers[0]:
+      if tbl_key not in net_desc:
+        keys.append(tbl_key)
+        values.append(-1)
+          
+    #now set all entries in net_desc in the table
     for layer, K in net_desc.items():
-      layer_tensor = tf.constant(layer, dtype=tf.string, shape=[1])
-      K_tensor = tf.constant(K[0], dtype=tf.int64, shape=[1])
-      self._K_by_layer_table.insert(layer_tensor, K_tensor).run(session=sess)
-        
-#     s = self._K_by_layer_table.size().eval(session=sess)
-#     data = self._K_by_layer_table.export()
-#     d = sess.run(data)
-#     print(d)
+      keys.append(layer)
+      values.append(K[0])
+    self._K_by_layer_table.insert(tf.constant(keys, dtype=tf.string), 
+                                  tf.constant(values, dtype=tf.int64)).run(session=sess)
     
-  # only useful during testing mode
+#     s = self._K_by_layer_table.size().eval(session=sess)
+    keys, values = self._K_by_layer_table.export()
+    layers, Ks = sess.run([keys, values])
+    
+    print('Active path through net:')
+    for layer, K in sorted(zip(layers, Ks)):
+      print('\t%s\tK=%d'%(layer.decode("utf-8"), K))
+
+    
   def test_image(self, sess, image, im_info):
     feed_dict = {self._image: image,
                  self._im_info: im_info}
-#                  self._active_Ks_placeholder: self._active_Ks}
     
     cls_score, cls_prob, bbox_pred, rois = sess.run([self._predictions["cls_score"],
                                                      self._predictions['cls_prob'],
@@ -264,7 +302,6 @@ class resnetv1_pluri(resnetv1_sep):
   def get_outputs_multi_image(self, blobs_list, output_layers, sess):
     outputs_list = []
     run_metadata_list = []
-#     self.set_active_path_through_net(net_desc, sess)
     
     for blobs in blobs_list:
       outputs, run_metadata = self.get_outputs(blobs, output_layers, sess)
@@ -278,13 +315,9 @@ class resnetv1_pluri(resnetv1_sep):
 #     layer = LayerName('block4/unit_3/bottleneck_v1/conv2')
     layer = LayerName('rpn_conv/3x3')
      
-    K_active = self._K_by_layer_table.lookup( tf.constant(layer, dtype=tf.string) )
-    print('%s K_active=%d'%(layer, K_active.eval(session=sess)))
-    
     feed_dict = {self._image: blobs['data'],
                  self._im_info: blobs['im_info'],
                  self._gt_boxes: np.zeros((10,5))}
-#                  self._active_Ks_placeholder: self._active_Ks}
     fetches = {}
     
     for collection_name in ops.get_all_collection_keys():
