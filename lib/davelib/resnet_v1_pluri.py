@@ -175,20 +175,20 @@ class resnetv1_pluri(resnetv1_sep):
   
   def rpn_convolution(self, net_conv4, is_training, initializer):
     layer_name = 'rpn_conv/3x3'
-    uncompressed_net = super(resnetv1_sep, self).rpn_convolution(net_conv4, is_training, initializer)
-    if layer_name not in self._net_desc: 
-      return uncompressed_net
-    
+#     uncompressed_net = super(resnetv1_sep, self).rpn_convolution(net_conv4, is_training, initializer)
+#     if layer_name not in self._net_desc: 
+#       return uncompressed_net
+    uncompressed_net = None
     idx_this_layer = self._layer_to_active_Ks_dict[layer_name]
 
     case_dict = {}    
     case_list = []    
     nets = []
     Ks = self._net_desc[layer_name]
-    for K in Ks:
-#     for K in reversed(Ks):
-      net = self.build_layer(K, net_conv4, is_training, initializer, layer_name)
-      nets.append(net)  
+#     for K in Ks:
+# #     for K in reversed(Ks):
+#       net = self.build_layer(K, net_conv4, is_training, initializer, layer_name)
+#       nets.append(net)  
 #           case_list.append( (math_ops.equal(K_active, constant_op.constant(33, dtype=dtypes.int64)),
 #                               lambda: net) )
 #         case_dict[ math_ops.equal(K_active, constant_op.constant(K, dtype=tf.int64)) ] = lambda: net
@@ -199,26 +199,33 @@ class resnetv1_pluri(resnetv1_sep):
 #     K_tensor = tf.constant(Ks[0], dtype=tf.int64)
 #     self._K_by_layer_table.insert(layer_tensor, K_tensor).run(session=self._sess)
 #           
-#     K_active = self._K_by_layer_table.lookup( constant_op.constant(layer_name, dtype=tf.string) )
     def f1(): 
-#       return self.build_layer(Ks[0], net_conv4, is_training, initializer, layer_name)
-      with tf.control_dependencies([nets[0]]):
-        return nets[0]
+      return self.build_layer(Ks[0], net_conv4, is_training, initializer, layer_name)
+#       with tf.control_dependencies([nets[0]]):
+#         return nets[0]
     def f2(): 
-#       return self.build_layer(Ks[1], net_conv4, is_training, initializer, layer_name)
-      with tf.control_dependencies([nets[1]]):
-        return nets[1]
-      
-    match_cond = tf.equal(self._active_Ks_placeholder[idx_this_layer], tf.constant(Ks[0]))
-    cond_result = tf.cond(match_cond, 
-                          lambda: f1(), lambda: f2())
+      return self.build_layer(Ks[1], net_conv4, is_training, initializer, layer_name)
+    def f3():
+      nonlocal uncompressed_net
+      if uncompressed_net is None:
+        uncompressed_net = super(resnetv1_sep, self).rpn_convolution(net_conv4, is_training, initializer)
+      return uncompressed_net
+    
+    K_active = self._K_by_layer_table.lookup( constant_op.constant(layer_name, dtype=tf.string) )
+    match_cond1 = tf.equal(K_active, tf.constant(Ks[0], dtype=tf.int64))
+    match_cond2 = tf.equal(K_active, tf.constant(Ks[1], dtype=tf.int64))
+#     match_cond1 = tf.equal(self._active_Ks_placeholder[idx_this_layer], tf.constant(Ks[0]))
+#     match_cond2 = tf.equal(self._active_Ks_placeholder[idx_this_layer], tf.constant(Ks[1]))
+#     cond_result = tf.cond(match_cond, lambda: f1(), lambda: f2())
+    case_result = tf.case({match_cond1: lambda: f1(), match_cond2: lambda: f2()}, 
+                          default=lambda: f3(), exclusive=True)
     
 #     def f1(): return nets[0]
 #     def f2(): return nets[1]
-    case_dict[ tf.equal(tf.constant(3),tf.constant(2)) ] = f1
-    case_dict[ tf.equal(tf.constant(2),tf.constant(3)) ] = f2
-    case_list.append( (math_ops.equal(tf.constant(2),tf.constant(3)), f1))
-    case_list.append( (math_ops.equal(tf.constant(2),tf.constant(3)), f2))
+#     case_dict[ tf.equal(tf.constant(3),tf.constant(2)) ] = f1
+#     case_dict[ tf.equal(tf.constant(2),tf.constant(3)) ] = f2
+#     case_list.append( (math_ops.equal(tf.constant(2),tf.constant(3)), f1))
+#     case_list.append( (math_ops.equal(tf.constant(2),tf.constant(3)), f2))
 #                               lambda: net) )
 #     case_dict[ tf.equal(K_active, tf.constant(1, dtype=tf.int64)) ] = f1
 #     case_dict[ tf.equal(K_active, tf.constant(2, dtype=tf.int64)) ] = f2
@@ -232,8 +239,8 @@ class resnetv1_pluri(resnetv1_sep):
 #     output = tf.case({tf.equal(K_active, tf.constant(Ks[0] + 1, dtype=tf.int64)): f2,
 #                       tf.equal(K_active, tf.constant(Ks[0] + 1, dtype=tf.int64)): f1}, 
 #                      exclusive=True)
-    output = control_flow_ops.case(case_list, exclusive=True)
-    output = cond_result
+#     output = control_flow_ops.case(case_list, exclusive=True)
+    output = case_result
 #     output = control_flow_ops.case(case_dict, exclusive=True)
 #     output = tf.case(case_dict, default=lambda: uncompressed_net, exclusive=True)
 #     output = net
@@ -280,24 +287,25 @@ class resnetv1_pluri(resnetv1_sep):
 #     output = uncompressed_net
     return output
   
-  def set_active_path_through_net(self, net_desc):  
-    self._active_Ks = np.zeros( len(net_desc) )
-    for layer, K in net_desc.items():
-      self._active_Ks[ self._layer_to_active_Ks_dict[layer] ] = K[0]
-
-#   def set_active_path_through_net(self, net_desc, sess):    
-#     data = self._K_by_layer_table.export()
-#     d = sess.run(data)
-#  
+#   def set_active_path_through_net(self, net_desc):  
+#     self._active_Ks = np.zeros( len(net_desc) )
 #     for layer, K in net_desc.items():
-#       layer_tensor = tf.constant(layer, dtype=tf.string, shape=[1])
-#       K_tensor = tf.constant(K[0], dtype=tf.int64, shape=[1])
-#       self._K_by_layer_table.insert(layer_tensor, K_tensor).run(session=sess)
-#        
-#     s = self._K_by_layer_table.size().eval(session=sess)
-#     data = self._K_by_layer_table.export()
-#     d = sess.run(data)
-# #     print(d)
+#       self._active_Ks[ self._layer_to_active_Ks_dict[layer] ] = K[0]
+
+  def set_active_path_through_net(self, net_desc, sess):   
+    self._active_Ks = np.zeros( len(net_desc) ) 
+    data = self._K_by_layer_table.export()
+    d = sess.run(data)
+  
+    for layer, K in net_desc.items():
+      layer_tensor = tf.constant(layer, dtype=tf.string, shape=[1])
+      K_tensor = tf.constant(K[0], dtype=tf.int64, shape=[1])
+      self._K_by_layer_table.insert(layer_tensor, K_tensor).run(session=sess)
+        
+    s = self._K_by_layer_table.size().eval(session=sess)
+    data = self._K_by_layer_table.export()
+    d = sess.run(data)
+#     print(d)
     
   # only useful during testing mode
   def test_image(self, sess, image, im_info):
@@ -329,8 +337,8 @@ class resnetv1_pluri(resnetv1_sep):
 #     layer = LayerName('block4/unit_3/bottleneck_v1/conv2')
     layer = LayerName('rpn_conv/3x3')
      
-#     K_active = self._K_by_layer_table.lookup( tf.constant(layer, dtype=tf.string) )
-#     print('%s K_active=%d'%(layer, K_active.eval(session=sess)))
+    K_active = self._K_by_layer_table.lookup( tf.constant(layer, dtype=tf.string) )
+    print('%s K_active=%d'%(layer, K_active.eval(session=sess)))
     
     feed_dict = {self._image: blobs['data'],
                  self._im_info: blobs['im_info'],

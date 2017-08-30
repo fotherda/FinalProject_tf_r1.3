@@ -134,7 +134,7 @@ class PluripotentNet(SeparableNet):
                                compression_stats, base_profile_stats, mAP_base_net=None, 
                                num_imgs_list=[], plot=False, run_profile_stats=True):
 
-    self._net_sep.set_active_path_through_net(net_desc)
+    self._net_sep.set_active_path_through_net(net_desc, sess)
 
     if base_outputs_list is None:
       base_outputs_list = self._base_net.get_outputs_multi_image(blobs_list, output_layers, sess)
