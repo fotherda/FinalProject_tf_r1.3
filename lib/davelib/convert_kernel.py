@@ -159,27 +159,30 @@ class ExperimentController(TensorFlowTestCase):
       K = int(K_frac * Kmax)
       if K == 0:
         K = 1
-      if K > Kmax:
+      elif K > Kmax:
         K = Kmax
+      elif K < 0:
+        continue #don't add a K it means this is uncompressed
       Ks.append(K)
     return Ks
   
-  def build_pluri_net_desc(self, Kfracs):
+  def build_net_desc(self, Kfracs):
     K_by_layer_dict = {}
     for layer_name in self._compressed_layers:
       Ks = self.get_Ks(layer_name, Kfracs)
-      K_by_layer_dict[layer_name] = Ks
+      if len(Ks) > 0:
+        K_by_layer_dict[layer_name] = Ks
     net_desc = CompressedNetDescription(K_by_layer_dict)
     return net_desc
   
-  def build_net_desc(self, Kfrac):
-    K_by_layer_dict = {}
-    for layer_name in self._compressed_layers:
-      K = self.get_Ks(layer_name, [Kfrac])
-      K_by_layer_dict[layer_name] = K
-#       K_by_layer_dict[layer_name] = K[0]
-    net_desc = CompressedNetDescription(K_by_layer_dict)
-    return net_desc
+#   def build_net_desc(self, Kfrac):
+#     K_by_layer_dict = {}
+#     if Kfrac >= 0: #-ve => completely uncompressed net
+#       for layer_name in self._compressed_layers:
+#         K = self.get_Ks(layer_name, [Kfrac])
+#         K_by_layer_dict[layer_name] = K
+#     net_desc = CompressedNetDescription(K_by_layer_dict)
+#     return net_desc
   
   def optimise_for_memory(self, max_iter, stats_file_suffix):
     guide_compression_stats = CompressionStats(filename_suffix=stats_file_suffix, 
@@ -322,21 +325,7 @@ class ExperimentController(TensorFlowTestCase):
     compressed_layers = remove_all_layers_before_rois(compressed_layers_all)
     run_this_split(compressed_layers)
     
-  def testCase_withDefault(self):
-    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
-    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
-                  (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
-    default = lambda: constant_op.constant(6)
-    output = control_flow_ops.case(conditions, exclusive=True)
-#     output = control_flow_ops.case(conditions, default, exclusive=True)
-    with self._sess as sess:
-      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
-      self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
-      self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
-
   def run_exp(self, num_imgs_list):
-#     self.testCase_withDefault()
-    
     compressed_layers = get_all_compressible_layers()
     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = remove_bottleneck_shortcut_layers(compressed_layers)
@@ -365,7 +354,7 @@ class ExperimentController(TensorFlowTestCase):
 #       self._compressed_layers = [layer_name]
       self._compressed_layers = compressed_layers
       
-      Kfracs = [0.1,1.0]
+      Kfracs = [-1,1.0]
 #       Kfracs = np.arange(0.01, 1.0, 0.025)
 #       Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
 #       Kfracs = [0.32,0.34,0.36,0.38]
@@ -375,13 +364,13 @@ class ExperimentController(TensorFlowTestCase):
       tf.reset_default_graph()
       self._sess = tf.Session(config=self._tfconfig) 
        
-      net_desc_pluri = self.build_pluri_net_desc(Kfracs)  
+      net_desc_pluri = self.build_net_desc(Kfracs)  
       pluri_net = PluripotentNet(scope_idx, self._base_net, self._sess, self._saved_model_path, 
                                self._all_comp_weights_dict, self._comp_bn_vars_dict, self._comp_bias_vars_dict, 
                                net_desc_pluri, self._base_variables)
        
       for Kfrac in Kfracs:
-        net_desc = self.build_net_desc(Kfrac)  
+        net_desc = self.build_net_desc([Kfrac])  
  
         pluri_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
                                            self._final_layers, self._compression_stats, 
