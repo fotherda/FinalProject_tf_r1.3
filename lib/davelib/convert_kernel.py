@@ -25,7 +25,9 @@ from davelib.pluripotent_net import PluripotentNet
 from davelib.layer_name import * 
 from davelib.utils import show_all_variables
 
-
+from tensorflow.python.framework import constant_op, dtypes
+from tensorflow.python.ops import math_ops, array_ops, control_flow_ops
+from tensorflow.python.framework.test_util import TensorFlowTestCase
 
 sys.path.append('/home/david/Project/35_tf-faster-rcnn/tools')
 figure_path = '/home/david/host/figures'
@@ -47,7 +49,7 @@ def get_blobs(im_names):
         
 
     
-class ExperimentController(object):
+class ExperimentController(TensorFlowTestCase):
 
   def __init__(self, base_net, sess, saved_model_path, tfconfig, stats_file_suffix):
 #     show_all_variables(True, base_net.get_scope())
@@ -58,8 +60,8 @@ class ExperimentController(object):
     self._saved_model_path = saved_model_path
     self._tfconfig = tfconfig
 #     im_names = ['000456.jpg', '000542.jpg']
-    im_names = ['000456.jpg', '000542.jpg', '001150.jpg', '001763.jpg', '004545.jpg']
-#     im_names = ['000456.jpg']
+#     im_names = ['000456.jpg', '000542.jpg', '001150.jpg', '001763.jpg', '004545.jpg']
+    im_names = ['000456.jpg']
     
     self._blobs_list = get_blobs(im_names)
 #     self._final_layers = [LayerName('cls_score')]
@@ -85,17 +87,41 @@ class ExperimentController(object):
     self._compression_stats = CompressionStats(filename_suffix=stats_file_suffix, 
                                                load_from_file=False, all_Kmaxs_dict=self._all_Kmaxs_dict)
     self._all_comp_weights_dict = {}
+    self._comp_bn_vars_dict = {}
+    self._comp_bias_vars_dict = {}
+    names_to_vars = {}
     with sess.as_default():
       with tf.variable_scope(base_net._resnet_scope, reuse=True):
         for layer_name in get_all_compressible_layers():
           weights = tf.get_variable(layer_name.layer_weights())
-          self._all_comp_weights_dict[layer_name] = weights.eval()
+          names_to_vars[layer_name] = weights
           
-           
-          bn_weights = tf.get_variable(layer_name.layer_weights())
-          self._all_comp_weights_dict[layer_name] = weights.eval()
+          for bn_type in ['beta','gamma','moving_mean','moving_variance']:
+            bn_var_name = layer_name+'/BatchNorm/'+bn_type
+            try:
+              bn_var = tf.get_variable(bn_var_name)
+            except ValueError:
+              continue #means this compressed layer doesn't have BatchNorm
+            names_to_vars[bn_var_name] = bn_var
+            
+          bias_var_name = layer_name+'/biases'
+          try:
+            bias_var = tf.get_variable(bias_var_name)
+          except ValueError:
+            continue #means this compressed layer doesn't have biases
+          names_to_vars[bias_var_name] = bias_var
           
-          
+      names = list(names_to_vars.keys())
+      vars_ = list(names_to_vars.values())
+      tensor_values = sess.run( vars_ )  
+      
+      for name, tensor_value in zip(names, tensor_values):
+        if 'BatchNorm' in name:
+          self._comp_bn_vars_dict[name] = tensor_value
+        elif 'biases' in name:
+          self._comp_bias_vars_dict[name] = tensor_value
+        else:
+          self._all_comp_weights_dict[name] = tensor_value
 
   def calc_all_Kmaxs(self):
     d = {}
@@ -150,7 +176,8 @@ class ExperimentController(object):
     K_by_layer_dict = {}
     for layer_name in self._compressed_layers:
       K = self.get_Ks(layer_name, [Kfrac])
-      K_by_layer_dict[layer_name] = K[0]
+      K_by_layer_dict[layer_name] = K
+#       K_by_layer_dict[layer_name] = K[0]
     net_desc = CompressedNetDescription(K_by_layer_dict)
     return net_desc
   
@@ -295,17 +322,32 @@ class ExperimentController(object):
     compressed_layers = remove_all_layers_before_rois(compressed_layers_all)
     run_this_split(compressed_layers)
     
-    
+  def testCase_withDefault(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
+    default = lambda: constant_op.constant(6)
+    output = control_flow_ops.case(conditions, exclusive=True)
+#     output = control_flow_ops.case(conditions, default, exclusive=True)
+    with self._sess as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
+
   def run_exp(self, num_imgs_list):
+#     self.testCase_withDefault()
+    
     compressed_layers = get_all_compressible_layers()
-    compressed_layers = remove_all_except_conv2_first_conv1(compressed_layers)
+    compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = remove_bottleneck_shortcut_layers(compressed_layers)
 #     compressed_layers = remove_bottleneck_not_unit1(compressed_layers)
+#     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2')]
+    compressed_layers = [LayerName('rpn_conv/3x3')]
+#     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2'), LayerName('rpn_conv/3x3')]
     
     #     Ks = range(1,11)
 #     layer_idxs = range(7)
     layer_idxs = [0]
-
 
     mAP_dict = self._base_net_wrapper.mAP(num_imgs_list, cfg.TEST.RPN_POST_NMS_TOP_N, self._sess)
     max_num_imgs = sorted(num_imgs_list)[-1]
@@ -320,40 +362,41 @@ class ExperimentController(object):
     for l, layer_name in enumerate(compressed_layers):
       if l not in layer_idxs:
         continue
-      self._compressed_layers = [layer_name]
-#       self._compressed_layers = compressed_layers
+#       self._compressed_layers = [layer_name]
+      self._compressed_layers = compressed_layers
       
-#       Kfracs = [1.0]
+      Kfracs = [0.1,1.0]
 #       Kfracs = np.arange(0.01, 1.0, 0.025)
 #       Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
-      Kfracs = [0.32,0.34,0.36,0.38]
+#       Kfracs = [0.32,0.34,0.36,0.38]
 #       Ks = self.get_Ks(layer_name, Kfracs)
 
-#       self._sess.close() #restart session to free memory and to reset profile stats
-#       tf.reset_default_graph()
-#       self._sess = tf.Session(config=self._tfconfig) 
-#       
-#       net_desc_pluri = self.build_pluri_net_desc(Kfracs)  
-#       pluri_net = PluripotentNet(scope_idx, self._base_net, self._sess, self._saved_model_path, 
-#                                self._all_comp_weights_dict, net_desc_pluri, self._base_variables)
+      self._sess.close() #restart session to free memory and to reset profile stats
+      tf.reset_default_graph()
+      self._sess = tf.Session(config=self._tfconfig) 
+       
+      net_desc_pluri = self.build_pluri_net_desc(Kfracs)  
+      pluri_net = PluripotentNet(scope_idx, self._base_net, self._sess, self._saved_model_path, 
+                               self._all_comp_weights_dict, self._comp_bn_vars_dict, self._comp_bias_vars_dict, 
+                               net_desc_pluri, self._base_variables)
        
       for Kfrac in Kfracs:
         net_desc = self.build_net_desc(Kfrac)  
  
-#         pluri_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
-#                                            self._final_layers, self._compression_stats, 
-#                                            self._base_profile_stats, mAP_base_net, num_imgs_list)
+        pluri_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
+                                           self._final_layers, self._compression_stats, 
+                                           self._base_profile_stats, mAP_base_net, num_imgs_list)
 
-        self._sess.close() #restart session to free memory and to reset profile stats
-        tf.reset_default_graph()
-        self._sess = tf.Session(config=self._tfconfig) 
-         
-        sep_net = SeparableNet(scope_idx, self._base_net, self._sess, self._saved_model_path, 
-                               self._all_comp_weights_dict, net_desc, self._base_variables)
-           
-        sep_net.run_performance_analysis(self._blobs_list, self._sess, self._base_outputs_list, 
-                                         self._final_layers, self._compression_stats, 
-                                         self._base_profile_stats, mAP_base_net, num_imgs_list)
+#         self._sess.close() #restart session# to free memory and to reset profile stats
+#         tf.reset_default_graph()
+#         self._sess = tf.Session(config=self._tfconfig) 
+#          
+#         sep_net = SeparableNet(scope_idx, self._base_net, self._sess, self._saved_model_path, 
+#                                self._all_comp_weights_dict, net_desc, self._base_variables)
+#            
+#         sep_net.run_performance_analysis(self._blobs_list, self._sess, self._base_outputs_list, 
+#                                          self._final_layers, self._compression_stats, 
+#                                          self._base_profile_stats, mAP_base_net, num_imgs_list)
         self._compression_stats.save()
         print(layer_name + ' Kfrac=' + str(Kfrac) + ' complete')
         scope_idx += 1
@@ -364,19 +407,28 @@ def pre_tasks():
   return
 #   print_for_latex()
 #   layers = get_all_compressible_layers()
-#   stats2 = CompressionStats('12')
 #   stats = CompressionStats('4952_top150')
 #   stats = CompressionStats('allLayersKfrac0.5_0.8_0.9_1.0')
 #   stats = CompressionStats('allLayersKfrac0.1_0.2_0.3_0.4_0.5_0.8_0.9_1.0')
 #   stats = CompressionStats('allLayersKfrac0.1_1.0')
 #   stats = CompressionStats('Kfrac0.01-1.0_conv2')
-  print(stats)
   
-#   stats.merge('12')
 
-  stats = CompressionStats('0.1-1.0_4952')
-  stats.plot_correlation_btw_mAP_num_imgs()
+  #Kfrac_mAP_X plots
+#   stats = CompressionStats('0.1-1.0_4952')
+#   stats.merge('0.32-0.38')
+#   stats.plot_by_Kfracs(plot_type_label='mAP_5_top150')
+
+
+  #mAP_corrn plots
+#   stats = CompressionStats('0.1-1.0_4952')
+#   stats.merge('0.32-0.38')
+#   stats.plot_correlation_btw_mAP_num_imgs(min_mAP=0.0)
   
+  
+  
+  
+  print(stats)
 #   stats.calc_profile_stats_all_nets()
   stats.multivar_regress()
 #   stats.save('allLayersKfrac0.8_0.9_1.0')
@@ -458,7 +510,7 @@ def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
 #   show_all_variables(show=True)
   
   exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '16')
-  exp_controller.run_exp(num_imgs_list=[5,10,4952])
+  exp_controller.run_exp(num_imgs_list=[5])
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)
 #   exp_controller.optimise_for_memory(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')

@@ -82,16 +82,18 @@ def plot_filters(plots_dict, n):
 class SeparableNet(object):
   
   def __init__(self, scope_idx, base_net, sess, saved_model_path, base_weights_dict, 
-               net_desc, base_variables):
+               comp_bn_vars_dict, comp_bias_vars_dict, net_desc, base_variables):
 
     self._base_net = base_net
     self._base_weights_dict = base_weights_dict
+    self._comp_bn_vars_dict = comp_bn_vars_dict
+    self._comp_bias_vars_dict = comp_bias_vars_dict
     self._net_desc = net_desc
     self._sess = sess
     self._saved_model_path = saved_model_path
     self._base_variables = base_variables
 
-    self.build_net(scope_idx, base_weights_dict, net_desc)
+    self.build_net(scope_idx)
     
   def build_net(self, scope_idx, base_weights_dict, net_desc):
     self._net_sep = resnetv1_sep(scope_idx, batch_size=1, num_layers=101, 

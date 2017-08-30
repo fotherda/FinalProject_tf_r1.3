@@ -9,6 +9,7 @@ import tensorflow as tf
 import datetime
 
 from model.config import cfg
+from utils.timer import Timer
 from davelib.resnet_v1_pluri import resnetv1_pluri
 from davelib.layer_name import LayerName
 from tensorflow.python.framework import ops
@@ -20,21 +21,27 @@ from davelib.utils import show_all_variables, stdout_redirector, run_test_metric
 class PluripotentNet(SeparableNet):
   
   def __init__(self, scope_idx, base_net, sess, saved_model_path, base_weights_dict, 
-               net_desc_pluri, base_variables):
+               comp_bn_vars_dict, comp_bias_vars_dict, net_desc_pluri, base_variables):
+    _t = {'init' : Timer(), 'misc' : Timer()}
+
+    _t['init'].tic()
     SeparableNet.__init__(self, scope_idx, base_net, sess, saved_model_path, base_weights_dict, 
-               net_desc_pluri, base_variables)
+               comp_bn_vars_dict, comp_bias_vars_dict, net_desc_pluri, base_variables)
+
+    _t['init'].toc()
+    print('PluripotentNet init took: {:.3f}s' .format( _t['init'].diff))
 
 
-  def build_net(self, scope_idx, base_weights_dict, net_desc):
+  def build_net(self, scope_idx):
     self._net_sep = resnetv1_pluri(scope_idx, batch_size=1, num_layers=101, 
-                        base_weights_dict=base_weights_dict, net_desc=net_desc)
+                        base_weights_dict=self._base_weights_dict, net_desc=self._net_desc,
+                        sess=self._sess)
     self._net_sep.create_architecture(self._sess, "TEST", 21,
                           tag='default', anchor_scales=[8, 16, 32])
-    show_all_variables(True, self._net_sep.get_scope())
- 
+#     show_all_variables(True, self._net_sep.get_scope())
     self.assign_trained_weights_to_unchanged_layers()
     self.assign_trained_weights_to_separable_layers()  
-
+#     show_all_variables(True, self._net_sep.get_scope())
     
   def assign_trained_weights_to_unchanged_layers(self):
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
@@ -43,23 +50,13 @@ class PluripotentNet(SeparableNet):
       for v in self._base_variables:
         name_full = v.op.name
         layer_name = LayerName(name_full, 'net_layer_weights')
-        if layer_name in self._net_desc:
-          continue
+#         if layer_name in self._net_desc:
+#           continue #skip compressed layers and their BatchNorm params
 #         print(name_full + ' ' + layer_name )
         restore_var_dict[name_full] = tf.get_variable(layer_name.layer_weights()) 
  
     saver = tf.train.Saver(restore_var_dict)
     saver.restore(self._sess, self._saved_model_path)
-    
-  def get_batch_norm_vars(self, base_weights_dict, layer_name_to_match):
-    all_ops = []
-    for layer_name, source_weights in base_weights_dict.items():
-      if layer_name_to_match == layer_name and 'BatchNorm' in layer_name:
-        dest_weights = tf.get_variable(layer_name_to_match.layer_weights())
-        assign_op = tf.assign(dest_weights, source_weights)
-        all_ops.extend(assign_op)
-        
-    return all_ops
     
   def assign_trained_weights_to_separable_layers(self):
     all_ops = []
@@ -75,8 +72,26 @@ class PluripotentNet(SeparableNet):
           ops = self.get_assign_ops(source_weights, dest_weights_1, dest_weights_2, K)
           all_ops.extend(ops)
           
-        batch_norm_ops = self.get_batch_norm_vars(self._base_weights_dict, layer_name)
-        all_ops.extend(batch_norm_ops)
+          for bn_type in ['beta','gamma','moving_mean','moving_variance']:
+            try:
+              dest_bn_var_name = layer_name+'_K' + str(K)+'/BatchNorm/'+bn_type
+              dest_bn_var = tf.get_variable(dest_bn_var_name)
+              source_bn_var_name = layer_name+'/BatchNorm/'+bn_type
+              source_bn_var = self._comp_bn_vars_dict[source_bn_var_name]
+              assign_op = tf.assign(dest_bn_var, source_bn_var)
+              all_ops.append(assign_op)
+            except ValueError:
+              break #means this compressed layer doesn't have BatchNorm
+            
+          try:
+            dest_bias_var_name = layer_name+'_K' + str(K)+'/biases'
+            dest_bias_var = tf.get_variable(dest_bias_var_name)
+            source_bias_var_name = layer_name+'/biases'
+            source_bias_var = self._comp_bias_vars_dict[source_bias_var_name]
+            assign_op = tf.assign(dest_bias_var, source_bias_var)
+            all_ops.append(assign_op)
+          except ValueError:
+            continue #means this compressed layer doesn't have biases
           
       self._sess.run(all_ops)
 
@@ -119,10 +134,12 @@ class PluripotentNet(SeparableNet):
                                compression_stats, base_profile_stats, mAP_base_net=None, 
                                num_imgs_list=[], plot=False, run_profile_stats=True):
 
+    self._net_sep.set_active_path_through_net(net_desc)
+
     if base_outputs_list is None:
       base_outputs_list = self._base_net.get_outputs_multi_image(blobs_list, output_layers, sess)
     sep_outputs_list, run_metadata_list = self._net_sep.get_outputs_multi_image(
-                                              blobs_list, output_layers, sess, net_desc)
+                                              blobs_list, output_layers, sess)
 
     for name in output_layers: # probably cls_score and bbox_pred - the 2 final layers
       diffs_cat = None

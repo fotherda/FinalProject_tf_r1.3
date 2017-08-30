@@ -23,26 +23,27 @@ def run_test_metric(num_imgs_list, net, sess, filename=None):
     filename ='default/res101_faster_rcnn_iter_110000'
   
   f = io.BytesIO()
-#   with stdout_redirector(f): #this stops some meaningless info on stdout
-  if len(num_imgs_list)==1:
-    num_imgs = num_imgs_list[0]
-    if num_imgs == len(imdb.image_index):
-      mAP = test_net(sess, net, imdb, filename, max_per_image=100)
-      mAP_dict = {num_imgs: mAP}
+  with stdout_redirector(f): #this stops some meaningless info on stdout
+    if len(num_imgs_list)==1:
+      num_imgs = num_imgs_list[0]
+      if num_imgs == len(imdb.image_index):
+        mAP = test_net(sess, net, imdb, filename, max_per_image=100)
+        mAP_dict = {num_imgs: mAP}
+      else:
+        sampler = VOCImgSampler()
+        sample_images = sampler.get_imgs(num_imgs)
+        sample_names_dict = { num_imgs: sample_images }
+        mAP_dict = test_net_with_sample(sess, net, imdb, filename, sample_images, 
+                                   max_per_image=100, sample_names_dict=sample_names_dict)
     else:
       sampler = VOCImgSampler()
-      sample_images = sampler.get_imgs(num_imgs)
+      sample_names_dict = sampler.get_nested_img_lists(num_imgs_list)
+      largest_num_imgs = (sorted(num_imgs_list))[-1]
+      sample_images = sample_names_dict[largest_num_imgs]
       mAP_dict = test_net_with_sample(sess, net, imdb, filename, sample_images, 
-                                 max_per_image=100)
-  else:
-    sampler = VOCImgSampler()
-    sample_names_dict = sampler.get_nested_img_lists(num_imgs_list)
-    largest_num_imgs = (sorted(num_imgs_list))[-1]
-    sample_images = sample_names_dict[largest_num_imgs]
-    
-    mAP_dict = test_net_with_sample(sess, net, imdb, filename, sample_images, 
-                               max_per_image=100, sample_names_dict=sample_names_dict)
-  return mAP_dict
+                                 max_per_image=100, sample_names_dict=sample_names_dict)
+    return mAP_dict
+
 
 
 libc = ctypes.CDLL(None)

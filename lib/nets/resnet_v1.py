@@ -332,17 +332,17 @@ class resnetv1(Network):
         sess.run(tf.assign(self._variables_to_fix[self._resnet_scope + '/conv1/weights:0'], 
                            tf.reverse(conv1_rgb, [2])))
         
-  def get_outputs_multi_image(self, blobs_list, output_layers, sess, net_desc=None):
+  def get_outputs_multi_image(self, blobs_list, output_layers, sess):
     outputs_list = []
     run_metadata_list = []
     
     for blobs in blobs_list:
-      outputs, run_metadata = self.get_outputs(blobs, output_layers, sess, net_desc)
+      outputs, run_metadata = self.get_outputs(blobs, output_layers, sess)
       outputs_list.append(outputs)
       run_metadata_list.append(run_metadata)
     return outputs_list, run_metadata_list
 
-  def get_outputs(self, blobs, output_layers, sess, net_desc=None):
+  def get_outputs(self, blobs, output_layers, sess):
     feed_dict = {self._image: blobs['data'],
                  self._im_info: blobs['im_info'],
                  self._gt_boxes: np.zeros((10,5))}

@@ -13,7 +13,7 @@ import sys
 # sys.setdefaultencoding('utf8')
 
 from collections import OrderedDict,defaultdict
-from matplotlib.ticker import MaxNLocator, FuncFormatter
+from matplotlib.ticker import MaxNLocator, FuncFormatter, FormatStrFormatter
 from sklearn import linear_model
 # from sklearn import cross_validation
 # from scipy import optimize
@@ -37,13 +37,13 @@ root_filename = 'CompressionStats_'
 @total_ordering
 class CompressedNetDescription(dict):
    
-  def __init__(self, K_by_layer_dict):
+  def __init__(self, Ks_by_layer_dict):
     items = []
 #     self._Ks = []
-    for layer, K in K_by_layer_dict.items():
-      self[layer] = K
+    for layer, Ks in Ks_by_layer_dict.items():
+      self[layer] = Ks
 #       self._Ks.append(K)
-      items.extend((layer, K))
+      items.extend( (layer, tuple(Ks)) )
     self._key = tuple(items)
 
 #   def __init__(self, compressed_layers, Ks):
@@ -88,6 +88,8 @@ class CompressedNetDescription(dict):
 #     return '\n'.join(map(str, sorted(self.items())))
 
   def get_Kfrac(self):
+    if len(self) == 0: # uncompressed
+      return 0.0
     for layer, K in self.items():
       if 'block4' in layer and 'conv2' in layer:
         Kfrac = K / 768.0
@@ -517,19 +519,28 @@ class CompressionStats(object):
      
     for net_desc, data_dict in sorted(self._stats.items()):
       for type_label, value in sorted(data_dict.items()):
-        if plot_type_label and plot_type_label not in type_label:
+        if plot_type_label and plot_type_label != type_label:
+#         if plot_type_label and plot_type_label not in type_label:
           continue
         if type_label =='var_redux':
           value = int( (base_total - value) / 1000000 )
-        plot_data.append(value)
-        calced_Kfracs.append( net_desc.get_Kfrac() )
+        Kfrac = net_desc.get_Kfrac() 
+        if Kfrac != 0:
+          calced_Kfracs.append( Kfrac )
+          plot_data.append(value)
+        else:
+          plt.axhline(y=value, color='r', linewidth=0.5)
+
         
+    calced_Kfracs, plot_data = zip(*sorted(zip(calced_Kfracs, plot_data)))
     plt.ticklabel_format(style='plain')
-    plt.plot(calced_Kfracs, plot_data,'o-')
+    plt.plot(calced_Kfracs, plot_data,'-o')
 #     plt.plot(Kfracs, plot_data,'o-')
-    plt.ylabel('No. parameters in net $x10^6$')
+    plt.ylabel('mAP #images=5')
+#     plt.ylabel('No. parameters in net $x10^6$')
 #     plt.ylabel('mAP')
-    plt.xlabel(r'fraction of $K_{max}$')
+#     plt.xlabel(r'fraction of $K_{max}$')
+    plt.xlabel(r'$K_{frac}$', weight='bold')
     plt.show()  
      
        
@@ -698,8 +709,8 @@ class CompressionStats(object):
     plt.show()  
      
        
-  def plot_correlation_btw_mAP_num_imgs(self):
-    _, ax = plt.subplots()
+  def plot_correlation_btw_mAP_num_imgs(self, min_mAP=0):
+    fig, ax = plt.subplots()
     n_rows = 3
     n_columns = 3
     
@@ -716,6 +727,8 @@ class CompressionStats(object):
       for _, data_dict in sorted(self._stats.items()):
         mAP = data_dict[mAP_label]
         top_mAP = data_dict[top_mAP_label]
+        if mAP < min_mAP or top_mAP < min_mAP:
+          continue
         ys.append(mAP)
         xs.append(top_mAP)
       ax = plt.subplot(n_rows, n_columns, plt_idx+1)
@@ -723,17 +736,22 @@ class CompressionStats(object):
       if plt_idx > 5:
         ax.set_xlabel('mAP #images=4952', fontsize=10)
       ax.set_ylabel('mAP #images=%s'%(mAP_label.split('_')[1]), fontsize=10)
+      ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+      ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
       nxs = np.vstack((xs,ys))
-      corr_coeff = np.corrcoef(nxs)
-      plt.text(0.2, 0.65, 'r = %.3f'%corr_coeff[0,1], fontsize=10, horizontalalignment='center', verticalalignment='center')
+      corr_coeff = np.corrcoef(nxs)#
+      plt.text(0.2, 0.65, 'r = %.3f'%corr_coeff[0,1], fontsize=10, weight='bold', horizontalalignment='center', verticalalignment='center')
+#       plt.text(0.73, 0.82, 'r = %.3f'%corr_coeff[0,1], fontsize=10, weight='bold', horizontalalignment='center', verticalalignment='center')
       #fit function
       a, b = np.polyfit(np.array(xs), np.array(ys), deg=1)
       f = lambda x: a*x + b
       x = np.array([0,0.85])
       ax.plot(x,f(x),lw=0.2, c="k")
-      ax.set_xlim([0,0.85])
-      ax.set_ylim([0,0.85])
+      ax.set_xlim([min_mAP,0.85])
+      ax.set_ylim([min_mAP,0.85])
       
+    fig.tight_layout()
+    plt.subplots_adjust(left=0.08, right=0.98, top=0.98, bottom=0.06, hspace=0.24, wspace=0.38)
     plt.show()  
      
        
