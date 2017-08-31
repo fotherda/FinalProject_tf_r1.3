@@ -64,14 +64,12 @@ class ExperimentController(TensorFlowTestCase):
     im_names = ['000456.jpg']
     
     self._blobs_list = get_blobs(im_names)
-#     self._final_layers = [LayerName('cls_score')]
-    self._final_layers = [LayerName('cls_prob'), LayerName('bbox_pred'), LayerName('rois')]
-#     self._final_layers = [LayerName('cls_score'), LayerName('bbox_pred')]
-#     final_layer = LayerName('block3/unit_23/bottleneck_v1/conv3')
-
+    self._final_layers = [LayerName('cls_prob'), LayerName('bbox_pred'), 
+                          LayerName('cls_score'), LayerName('rois')]
+#     self._final_layers = [LayerName('cls_prob'), LayerName('bbox_pred'), LayerName('rois')]
     
-    if os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
-#     if False and os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
+#     if os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
+    if False and os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
       self._base_outputs_list = pi.load( open( 'base_outputs.pi', "rb" ) )
       self._base_profile_stats = pi.load( open( 'base_profile_stats.pi', "rb" ) )
     else:
@@ -82,16 +80,17 @@ class ExperimentController(TensorFlowTestCase):
       pi.dump( self._base_profile_stats, open( 'base_profile_stats.pi', "wb" ) )
     
     self._base_variables = tf.global_variables()
-
     self._all_Kmaxs_dict = self.calc_all_Kmaxs()
     self._compression_stats = CompressionStats(filename_suffix=stats_file_suffix, 
                                                load_from_file=False, all_Kmaxs_dict=self._all_Kmaxs_dict)
+    
+  def get_var_dicts(self):  
     self._all_comp_weights_dict = {}
     self._comp_bn_vars_dict = {}
     self._comp_bias_vars_dict = {}
     names_to_vars = {}
-    with sess.as_default():
-      with tf.variable_scope(base_net._resnet_scope, reuse=True):
+    with self._sess.as_default():
+      with tf.variable_scope(self._base_net._resnet_scope, reuse=True):
         for layer_name in get_all_compressible_layers():
           weights = tf.get_variable(layer_name.layer_weights())
           names_to_vars[layer_name] = weights
@@ -113,7 +112,7 @@ class ExperimentController(TensorFlowTestCase):
           
       names = list(names_to_vars.keys())
       vars_ = list(names_to_vars.values())
-      tensor_values = sess.run( vars_ )  
+      tensor_values = self._sess.run( vars_ )  
       
       for name, tensor_value in zip(names, tensor_values):
         if 'BatchNorm' in name:
@@ -192,8 +191,8 @@ class ExperimentController(TensorFlowTestCase):
     objective_label = 'param_bytes_frac_delta'
 #     objective_label = 'total_output_bytes_frac_delta'
 #     objective_label = 'total_bytes_frac_delta'
-#     performance_label = 'diff_mean_cls_score'
-    performance_label = 'diff_mean_cls_prob'
+    performance_label = 'diff_mean_cls_score'
+#     performance_label = 'diff_mean_cls_prob'
     
     objective_dict = stats_dict[objective_label] #layer->K
     performance_dict = stats_dict[performance_label]
@@ -219,7 +218,7 @@ class ExperimentController(TensorFlowTestCase):
     def get_K_old_new(layer):
       sorted_keys = list(reversed(sorted(objective_dict[layer].keys())))
       if layer in layer_K_dict:
-        K_old = layer_K_dict[layer]
+        K_old = layer_K_dict[layer][0]
         idx = sorted_keys.index( K_old )
         if idx+1 < len(sorted_keys):
           K_new = sorted_keys[idx + 1]
@@ -240,13 +239,13 @@ class ExperimentController(TensorFlowTestCase):
         K_old, K_new = get_K_old_new(layer)  
         if K_new == 0: #max compression reached for this layer
           continue
-        elif K_old != 0:
+        elif K_old != 0: #already compressed this layer a bit
           objective_delta = objective_dict[layer][K_new] - objective_dict[layer][K_old]
           performance_delta = performance_dict[layer][K_new] - performance_dict[layer][K_old]
-        else:
+        else: #this layer hasn't been compressed at all yet
           objective_delta = objective_dict[layer][K_new]
           performance_delta = performance_dict[layer][K_new]
-
+          
         objective_grad = objective_delta / performance_delta
         grad_dict[objective_grad] = layer 
         perf_delta_dict[layer] = performance_delta
@@ -254,7 +253,7 @@ class ExperimentController(TensorFlowTestCase):
       grad_min = list(sorted(grad_dict))[0]
       layer_with_min_grad = grad_dict[grad_min]
       K_old, K_new = get_K_old_new(layer_with_min_grad)
-      layer_K_dict[layer_with_min_grad] = K_new
+      layer_K_dict[layer_with_min_grad] = [K_new]
       expected_perf_delta = perf_delta_dict[layer_with_min_grad]
       
       self._sess.close() #restart session to free memory and to reset profile stats
@@ -264,7 +263,8 @@ class ExperimentController(TensorFlowTestCase):
       net_desc = CompressedNetDescription(layer_K_dict)
       
       sep_net = SeparableNet(scope_idx, self._base_net, self._sess, self._saved_model_path, 
-                             self._all_comp_weights_dict, net_desc, self._base_variables)
+                             self._all_comp_weights_dict, self._comp_bn_vars_dict, 
+                             self._comp_bias_vars_dict, net_desc, self._base_variables)
       
       sep_net.run_performance_analysis(self._blobs_list, self._sess, self._base_outputs_list, 
                                        self._final_layers, self._compression_stats, 
@@ -499,10 +499,10 @@ def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
 #   show_all_variables(show=True)
   
   exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '16')
-  exp_controller.run_exp(num_imgs_list=[10])
+#   exp_controller.run_exp(num_imgs_list=[10])
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)
-#   exp_controller.optimise_for_memory(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')
+  exp_controller.optimise_for_memory(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')
   
 
     #do the plotting      

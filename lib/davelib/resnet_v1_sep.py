@@ -192,7 +192,7 @@ class resnetv1_sep(resnetv1):
       biases_regularizer=None): #make first layer clean, no BN no biases no activation func
 
       K = self._net_desc[layer_name]
-      intermediate = layers.conv2d(inputs, K, [1, 1], stride=1, scope=int_scope)
+      intermediate = layers.conv2d(inputs, K[0], [1, 1], stride=1, scope=int_scope)
      
     with arg_scope(
       [layers.conv2d],
@@ -214,7 +214,7 @@ class resnetv1_sep(resnetv1):
 
       K = self._net_desc[full_layer_name]
       layer1_name = LayerName(layer_name + '_sep')
-      net = conv2d_same(inputs, K, kernel_size=(kernel_size,1), stride=[stride,1],
+      net = conv2d_same(inputs, K[0], kernel_size=(kernel_size,1), stride=[stride,1],
                          scope=layer1_name)
     
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
@@ -238,7 +238,7 @@ class resnetv1_sep(resnetv1):
       biases_initializer=None,
       biases_regularizer=None): #make first layer clean, no BN no biases no activation func
      
-      net = slim.conv2d(net_conv4, K, [3, 1], trainable=is_training, weights_initializer=initializer,
+      net = slim.conv2d(net_conv4, K[0], [3, 1], trainable=is_training, weights_initializer=initializer,
                         scope=layer1_name)
 
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
@@ -266,7 +266,7 @@ class resnetv1_sep(resnetv1):
       biases_initializer=None,
       biases_regularizer=None): #make first layer clean, no BN no biases no activation func
      
-      net = slim.fully_connected(input_, K, weights_initializer=initializer,
+      net = slim.fully_connected(input_, K[0], weights_initializer=initializer,
                                 trainable=is_training, activation_fn=None, scope=layer1_name)
 
     with slim.arg_scope(resnet_arg_scope(is_training=False)):

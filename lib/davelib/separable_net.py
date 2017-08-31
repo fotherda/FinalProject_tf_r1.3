@@ -93,7 +93,7 @@ class SeparableNet(object):
     self._saved_model_path = saved_model_path
     self._base_variables = base_variables
 
-    self.build_net(scope_idx)
+    self.build_net(scope_idx, base_weights_dict, net_desc)
     
   def build_net(self, scope_idx, base_weights_dict, net_desc):
     self._net_sep = resnetv1_sep(scope_idx, batch_size=1, num_layers=101, 
@@ -130,7 +130,7 @@ class SeparableNet(object):
         layer1_name = LayerName(layer_name +'_sep/weights','layer_weights')
         dest_weights_1 = tf.get_variable(layer1_name.layer_weights())
         dest_weights_2 = tf.get_variable(layer_name.layer_weights())
-        K = self._net_desc[layer_name]
+        K = (self._net_desc[layer_name])[0]
         ops = self.get_assign_ops(source_weights, dest_weights_1, dest_weights_2, K)
         all_ops.extend(ops)
           

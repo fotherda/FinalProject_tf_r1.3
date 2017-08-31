@@ -178,43 +178,6 @@ class resnetv1_pluri(resnetv1_sep):
     
     return tf.case(case_dict, default=uncompressed_func, exclusive=True)
   
-#   def separate_conv_layer(self, inputs, num_output_channels, kernel_size, stride, rate,
-#                           layer_name, full_layer_name):
-# 
-#     uncompressed_net = resnet_utils.conv2d_same(inputs, num_output_channels, kernel_size, 
-#                                                 stride=stride, scope=layer_name)
-#     if layer_name not in self._net_desc: 
-#       return uncompressed_net
-# 
-#     K_active = self._K_by_layer_table.lookup( tf.constant(layer_name, dtype=tf.string) )
-# 
-#     case_dict = {}
-#     Ks = self._net_desc[full_layer_name]
-#     for K in Ks:
-#       with arg_scope(
-#         [slim.conv2d],
-#         weights_regularizer=None,
-#         weights_initializer=None,
-#         trainable=False,
-#         activation_fn=None,
-#         normalizer_fn=None,
-#         normalizer_params=None,
-#         biases_initializer=None): #make first layer clean, no BN no biases no activation func
-#   
-#         layer1_name = LayerName(layer_name + '_sep_K'+str(K))
-#         net = conv2d_same(inputs, K, kernel_size=(kernel_size,1), stride=[stride,1],
-#                            scope=layer1_name)
-#       
-#         layer2_name = LayerName(layer_name + '_K'+str(K))
-#       with slim.arg_scope(resnet_arg_scope(is_training=False)):
-#         net = conv2d_same(net, num_output_channels, kernel_size=(1,kernel_size), 
-#                           stride=[1,stride], scope=layer2_name)
-#         
-#       case_dict[ tf.equal(K_active, tf.constant(K, dtype=tf.int64)) ] = lambda: net
-#     
-#     output = tf.case(case_dict, exclusive=True)
-# #     output = tf.case(case_dict, default=lambda: uncompressed_net, exclusive=True)
-#     return output
   
   def separate_conv_layer(self, inputs, num_output_channels, kernel_size, stride, rate,
                           layer_name, full_layer_name):
@@ -256,15 +219,13 @@ class resnetv1_pluri(resnetv1_sep):
     
     return tf.case(case_dict, default=uncompressed_func, exclusive=True)
 
-  
 
-  def set_active_path_through_net(self, net_desc, sess):   
+  def set_active_path_through_net(self, net_desc, sess, print_path=False):   
     self._active_Ks = np.zeros( len(net_desc) ) 
     keys_tensor, _ = self._K_by_layer_table.export()
     layers = sess.run([keys_tensor])
   
     #first set to -1 all the entries in the table that aren't in this net_desc
-#     non_empty_entries = [tbl_key for tbl_key in layers[0] if len(tbl_key)>0]
     keys = []
     values=[]
     for tbl_key in layers[0]:
@@ -283,9 +244,10 @@ class resnetv1_pluri(resnetv1_sep):
     keys, values = self._K_by_layer_table.export()
     layers, Ks = sess.run([keys, values])
     
-    print('Active path through net:')
-    for layer, K in sorted(zip(layers, Ks)):
-      print('\t%s\tK=%d'%(layer.decode("utf-8"), K))
+    if print_path:
+      print('Active path through net:')
+      for layer, K in sorted(zip(layers, Ks)):
+        print('\t%s\tK=%d'%(layer.decode("utf-8"), K))
 
     
   def test_image(self, sess, image, im_info):
@@ -313,7 +275,7 @@ class resnetv1_pluri(resnetv1_sep):
   def get_outputs(self, blobs, output_layers, sess):
 #     output_layers.append(LayerName('conv1'))
 #     layer = LayerName('block4/unit_3/bottleneck_v1/conv2')
-    layer = LayerName('rpn_conv/3x3')
+#     layer = LayerName('rpn_conv/3x3')
      
     feed_dict = {self._image: blobs['data'],
                  self._im_info: blobs['im_info'],
@@ -362,19 +324,3 @@ class resnetv1_pluri(resnetv1_sep):
                                 trainable=is_training, scope=layer_name)
     return net
  
-  def build_base(self):
-    layer_name = LayerName('conv1')
-    if layer_name in self._net_desc:
-      with tf.variable_scope(self._resnet_scope, self._resnet_scope):
-        N = self._base_weights_dict[layer_name].shape[3]
-  
-        net = self.separate_conv_layer(self._image, N, 7, 2, rate=None, layer_name=layer_name,
-                                       full_layer_name=layer_name)
-  
-        end_points_collection = self._resnet_scope + '_end_points'
-        utils.collect_named_outputs(end_points_collection, self._resnet_scope+'/conv1', net)        
-        net = tf.pad(net, [[0, 0], [1, 1], [1, 1], [0, 0]])
-        net = slim.max_pool2d(net, [3, 3], stride=2, padding='VALID', scope='pool1')
-    else:
-      net = super(resnetv1_sep, self).build_base()
-    return net
