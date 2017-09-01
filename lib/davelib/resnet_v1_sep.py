@@ -99,9 +99,10 @@ def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
 
 class resnetv1_sep(resnetv1):
     
-  def __init__(self, scope_idx, batch_size, num_layers, base_weights_dict, net_desc):
+  def __init__(self, batch_size, num_layers, base_weights_dict, net_desc):
     resnetv1.__init__(self, batch_size, num_layers)
-    self._resnet_scope = 'resnet_v1_sep%d_%d' % (scope_idx, num_layers)  
+    self._resnet_scope = 'resnet_v1_sep_%d' % (num_layers)  
+#     self._resnet_scope = 'resnet_v1_sep%d_%d' % (scope_idx, num_layers)  
     self._base_weights_dict = base_weights_dict
     self._net_desc = net_desc
     self.bottleneck_func = self.bottleneck

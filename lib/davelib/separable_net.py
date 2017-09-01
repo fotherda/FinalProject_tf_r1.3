@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import datetime
+import os.path
 
 from model.config import cfg
 from davelib.resnet_v1_sep import resnetv1_sep
@@ -15,6 +16,7 @@ from tensorflow.python.framework import ops
 from collections import OrderedDict
 from davelib.profile_stats import ProfileStats
 from davelib.utils import show_all_variables, stdout_redirector, run_test_metric
+from utils.timer import Timer
 
 
 def mismatch_count(base_outputs, sep_outputs):
@@ -81,8 +83,8 @@ def plot_filters(plots_dict, n):
 
 class SeparableNet(object):
   
-  def __init__(self, scope_idx, base_net, sess, saved_model_path, base_weights_dict, 
-               comp_bn_vars_dict, comp_bias_vars_dict, net_desc, base_variables):
+  def __init__(self, base_net, sess, saved_model_path, base_weights_dict, 
+               comp_bn_vars_dict, comp_bias_vars_dict, net_desc, base_variables, filename=None):
 
     self._base_net = base_net
     self._base_weights_dict = base_weights_dict
@@ -92,20 +94,53 @@ class SeparableNet(object):
     self._sess = sess
     self._saved_model_path = saved_model_path
     self._base_variables = base_variables
-
-    self.build_net(scope_idx, base_weights_dict, net_desc)
-    
-  def build_net(self, scope_idx, base_weights_dict, net_desc):
-    self._net_sep = resnetv1_sep(scope_idx, batch_size=1, num_layers=101, 
-                        base_weights_dict=base_weights_dict, net_desc=net_desc)
+    self._init_resnet()
     self._net_sep.create_architecture(self._sess, "TEST", 21,
                           tag='default', anchor_scales=[8, 16, 32])
+    
+    restore = False
+    if filename:
+      save_dir = saved_model_path[:saved_model_path.rfind('/')+1]
+      save_file = save_dir + filename
+      restore_file = save_file + '.meta'
+      if os.path.isfile(restore_file):
+        restore = True
+
+    if restore:
+      _t = Timer()
+      _t.tic()
+      saver = tf.train.Saver()
+      saver.restore(sess,tf.train.latest_checkpoint(save_dir))
+      _t.toc()
+#       show_all_variables(True, self._net_sep.get_scope())
+      print('Net restore from file took: {:.3f}s' .format( _t.diff))
+    else:    
+      self._assign_weights()
+
+    if filename and not restore: #save this model with it's variables and weights
+      saver = tf.train.Saver()
+      saver.save(sess, save_file)
+
+  def _init_resnet(self):
+    self._net_sep = resnetv1_sep(batch_size=1, num_layers=101, 
+                        base_weights_dict=self._base_weights_dict, net_desc=self._net_desc)
+    
+  def _assign_weights(self):
+    _t = Timer()
+    _t.tic()
+#     self._net_sep = resnetv1_sep(scope_idx, batch_size=1, num_layers=101, 
+#                         base_weights_dict=self._base_weights_dict, net_desc=self._net_desc)
+#     self._net_sep.create_architecture(self._sess, "TEST", 21,
+#                           tag='default', anchor_scales=[8, 16, 32])
 #     show_all_variables(True, self._net_sep.get_scope())
 
     self.assign_trained_weights_to_unchanged_layers()
     self.assign_trained_weights_to_separable_layers()  
+    _t.toc()
+    print('PluripotentNet init took: {:.3f}s' .format( _t.diff))
+
     
-  def assign_trained_weights_to_unchanged_layers(self):
+  def _assign_trained_weights_to_unchanged_layers(self):
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
       restore_var_dict = {}
 
@@ -121,7 +156,7 @@ class SeparableNet(object):
     saver.restore(self._sess, self._saved_model_path)
     
   
-  def assign_trained_weights_to_separable_layers(self):
+  def _assign_trained_weights_to_separable_layers(self):
     all_ops = []
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
       for layer_name in self._net_desc:
@@ -131,18 +166,18 @@ class SeparableNet(object):
         dest_weights_1 = tf.get_variable(layer1_name.layer_weights())
         dest_weights_2 = tf.get_variable(layer_name.layer_weights())
         K = (self._net_desc[layer_name])[0]
-        ops = self.get_assign_ops(source_weights, dest_weights_1, dest_weights_2, K)
+        ops = self._get_assign_ops(source_weights, dest_weights_1, dest_weights_2, K)
         all_ops.extend(ops)
           
       self._sess.run(all_ops)
 
-  def get_assign_ops(self, source_weights, dest_weights_1, dest_weights_2, K, plot=False):
+  def _get_assign_ops(self, source_weights, dest_weights_1, dest_weights_2, K, plot=False):
     if plot :
       f_norms = np.empty(K+1)
       plots_dict = OrderedDict()
       Ks = [21,5,2,1]
       for k in Ks:
-        V, H = self.get_low_rank_filters(source_weights, k)
+        V, H = self._get_low_rank_filters(source_weights, k)
         f_norms[k], plots = check_reconstruction_error(V, H, source_weights, k)
         plots_dict[k] = plots
       plot_filters(plots_dict, 4)
@@ -150,22 +185,22 @@ class SeparableNet(object):
       if len(source_weights.shape) == 4: #convolutional layer
         H,W,C,N = tuple(source_weights.shape)
         if H==1 and W==1: #1x1 conv layer
-          M1, M2 = self.get_low_rank_1x1_filters(source_weights, K)
+          M1, M2 = self._get_low_rank_1x1_filters(source_weights, K)
         else:
-          M1, M2 = self.get_low_rank_filters(source_weights, K)
+          M1, M2 = self._get_low_rank_filters(source_weights, K)
           M1 = np.moveaxis(M1, source=2, destination=0)
           M1 = np.expand_dims(M1, axis=1)
           M2 = np.swapaxes(M2, axis1=2, axis2=0)
           M2 = np.expand_dims(M2, axis=0)
       elif len(source_weights.shape) == 2: #fc layer
-        M1, M2 = self.get_low_rank_weights_for_fc_layer(source_weights, K)
+        M1, M2 = self._get_low_rank_weights_for_fc_layer(source_weights, K)
         
     assign_op_1 = tf.assign(dest_weights_1, M1)
     assign_op_2 = tf.assign(dest_weights_2, M2)
     
     return [assign_op_1, assign_op_2]
 
-  def trim_outputs(self, base_output, sep_output):
+  def _trim_outputs(self, base_output, sep_output):
     if base_output.shape != sep_output.shape:
       s = sep_output.shape
       base_output = base_output[:s[0],:]
@@ -192,7 +227,7 @@ class SeparableNet(object):
         
 #         mismatch_cnt += mismatch_count(base_output, sep_output)
         
-        base_output_trimmed = self.trim_outputs(base_output, sep_output)
+        base_output_trimmed = self._trim_outputs(base_output, sep_output)
         diff = np.subtract(base_output_trimmed, sep_output)
         if diffs_cat is not None:
           diffs_cat = np.append(diffs_cat, diff)
@@ -242,7 +277,7 @@ class SeparableNet(object):
       base_output = base_outputs[layer_name.net_layer(self._base_net.get_scope())]
       sep_output = outputs[layer_name.net_layer(self._net_sep.get_scope())]
       
-      self.plot_outputs(base_output, sep_output)
+      self._plot_outputs(base_output, sep_output)
       diff = np.subtract(base_output, sep_output)
       
       base_output_mean = np.mean(np.absolute(base_output)), 
@@ -255,7 +290,7 @@ class SeparableNet(object):
     
     return base_output_mean, diff_mean_abs, diff_stdev_abs, diff_max_abs
     
-  def tensor_to_matrix(self, W_arr):
+  def _tensor_to_matrix(self, W_arr):
     # convert 4-D tensor to 2-D using bijection from Tai et al 2016
     s = W_arr.shape
     assert s[0] == s[1]
@@ -274,7 +309,7 @@ class SeparableNet(object):
   
     return C,d,N,W  
     
-  def get_low_rank_1x1_filters(self, weights, K): #for convolutional layers
+  def _get_low_rank_1x1_filters(self, weights, K): #for convolutional layers
     W = np.squeeze(weights)
     U,Dvec,Qt = np.linalg.svd(W) # U=C x C, Q=N x N, D=min(C,N), 
     D = np.diagflat(Dvec)
@@ -287,7 +322,7 @@ class SeparableNet(object):
                       
     return U, P
 
-  def get_low_rank_filters(self, weights, K): #for convolutional layers
+  def _get_low_rank_filters(self, weights, K): #for convolutional layers
     C,d,N,W = self.tensor_to_matrix(weights) # W=Cd x Nd
     U,D,Qt = np.linalg.svd(W) # U=Cd x Cd, Q=Nd x Nd, D=Cd, 
     Q = np.transpose(Qt)
@@ -304,12 +339,12 @@ class SeparableNet(object):
   
     return V, H 
 
-  def get_low_rank_weights_for_fc_layer(self, weights, K):
+  def _get_low_rank_weights_for_fc_layer(self, weights, K):
     U,Dvec,Qt = np.linalg.svd(weights) # U=C x C, Q=N x N, D=min(C,N), 
     D = np.diagflat(Dvec)
     return U[:,:K], np.dot(D[:K,:K], Qt[:K,:])
   
-  def plot_outputs(self, units, units_sep, name):
+  def _plot_outputs(self, units, units_sep, name):
       filters = 4
       fig = plt.figure(figsize=(15,8))
       n_columns = filters+1

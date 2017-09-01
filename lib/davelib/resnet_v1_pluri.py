@@ -36,14 +36,15 @@ from davelib.utils import *
 
 class resnetv1_pluri(resnetv1_sep):
     
-  def __init__(self, scope_idx, batch_size, num_layers, base_weights_dict, net_desc, sess=None):
-    resnetv1.__init__(self, batch_size, num_layers)
-    self._resnet_scope = 'resnet_v1_sep%d_%d' % (scope_idx, num_layers)  
-    self._base_weights_dict = base_weights_dict
-    self._net_desc = net_desc
-    self.bottleneck_func = self.bottleneck
+  def __init__(self, batch_size, num_layers, base_weights_dict, net_desc, sess=None):
+    resnetv1_sep.__init__(self, batch_size, num_layers, base_weights_dict, net_desc)
+#     self._resnet_scope = 'resnet_v1_sep_%d' % (num_layers)  
+# #     self._resnet_scope = 'resnet_v1_sep%d_%d' % (scope_idx, num_layers)  
+#     self._base_weights_dict = base_weights_dict
+#     self._net_desc = net_desc
+#     self.bottleneck_func = self.bottleneck
+#     self._end_points_collection = self._resnet_scope + '_end_points'
     self._sess = sess
-    self._end_points_collection = self._resnet_scope + '_end_points'
     self._K_by_layer_table = tf.contrib.lookup.MutableHashTable(key_dtype=tf.string,
                                            value_dtype=tf.int64, default_value=-1)
 
@@ -135,6 +136,17 @@ class resnetv1_pluri(resnetv1_sep):
 
   def rpn_convolution(self, net_conv4, is_training, initializer):
     layer_name = 'rpn_conv/3x3'
+    uncompressed_net = None
+    
+    def uncompressed_func():
+      nonlocal uncompressed_net
+      if uncompressed_net is None:#need this as irritatingly the tf.case() calls it twice
+        uncompressed_net = super(resnetv1_sep, self).rpn_convolution(net_conv4, is_training, initializer)
+      return uncompressed_net
+
+    if layer_name not in self._net_desc:
+      net = uncompressed_func()
+      return net
 
     def build_layer(K):
 #       nonlocal net_conv4, is_training, initializer, layer_name
@@ -161,12 +173,6 @@ class resnetv1_pluri(resnetv1_sep):
                             scope=layer2_name)
       return net
 
-    uncompressed_net = None
-    def uncompressed_func():
-      nonlocal uncompressed_net
-      if uncompressed_net is None:#need this as irritatingly the tf.case() calls it twice
-        uncompressed_net = super(resnetv1_sep, self).rpn_convolution(net_conv4, is_training, initializer)
-      return uncompressed_net
 
     
     K_active = self._K_by_layer_table.lookup( tf.constant(layer_name, dtype=tf.string) )
