@@ -95,8 +95,7 @@ class SeparableNet(object):
     self._saved_model_path = saved_model_path
     self._base_variables = base_variables
     self._init_resnet()
-    self._net_sep.create_architecture(self._sess, "TEST", 21,
-                          tag='default', anchor_scales=[8, 16, 32])
+    self._net_sep.create_architecture(self._sess, "TEST", 21, tag='default', anchor_scales=[8, 16, 32])
     
     restore = False
     if filename:
@@ -128,14 +127,8 @@ class SeparableNet(object):
   def _assign_weights(self):
     _t = Timer()
     _t.tic()
-#     self._net_sep = resnetv1_sep(scope_idx, batch_size=1, num_layers=101, 
-#                         base_weights_dict=self._base_weights_dict, net_desc=self._net_desc)
-#     self._net_sep.create_architecture(self._sess, "TEST", 21,
-#                           tag='default', anchor_scales=[8, 16, 32])
-#     show_all_variables(True, self._net_sep.get_scope())
-
-    self.assign_trained_weights_to_unchanged_layers()
-    self.assign_trained_weights_to_separable_layers()  
+    self._assign_trained_weights_to_unchanged_layers()
+    self._assign_trained_weights_to_separable_layers()  
     _t.toc()
     print('PluripotentNet init took: {:.3f}s' .format( _t.diff))
 
@@ -160,7 +153,6 @@ class SeparableNet(object):
     all_ops = []
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
       for layer_name in self._net_desc:
-#       for layer_name, source_weights in self._comp_weights_dict.items():
         source_weights = self._base_weights_dict[layer_name]
         layer1_name = LayerName(layer_name +'_sep/weights','layer_weights')
         dest_weights_1 = tf.get_variable(layer1_name.layer_weights())
@@ -206,7 +198,7 @@ class SeparableNet(object):
       base_output = base_output[:s[0],:]
     return base_output
 
-  def run_performance_analysis(self, blobs_list, sess, base_outputs_list, output_layers, 
+  def run_performance_analysis(self, net_desc, blobs_list, sess, base_outputs_list, output_layers, 
                                compression_stats, base_profile_stats, mAP_base_net=None, 
                                num_imgs_list=[], plot=False, run_profile_stats=True):
 
@@ -244,29 +236,29 @@ class SeparableNet(object):
 #       print('base mean=', base_output_mean, ' diff mean=', diff_mean_abs, 
 #             ' stdev=', diff_stdev_abs, ' max=', diff_max_abs)
 
-      compression_stats.set(self._net_desc, 'base_mean_'+name, base_output_mean)
-      compression_stats.set(self._net_desc, 'diff_mean_'+name, diff_mean_abs)
-      compression_stats.set(self._net_desc, 'diff_stdev_'+name, diff_stdev_abs)
-      compression_stats.set(self._net_desc, 'diff_max_'+name, diff_max_abs)
-#       compression_stats.set(self._net_desc, 'mismatch_count_'+name, mismatch_cnt)
+      compression_stats.set(net_desc, 'base_mean_'+name, base_output_mean)
+      compression_stats.set(net_desc, 'diff_mean_'+name, diff_mean_abs)
+      compression_stats.set(net_desc, 'diff_stdev_'+name, diff_stdev_abs)
+      compression_stats.set(net_desc, 'diff_max_'+name, diff_max_abs)
+#       compression_stats.set(net_desc, 'mismatch_count_'+name, mismatch_cnt)
 
 #         num_imgs = 4952
     if len(num_imgs_list) > 0:
       suffix = datetime.datetime.now().strftime("%y%m%d_%H%M%S")
       det_filename = "_".join(['default/res101_comp_net', suffix]) # e.g. 'mylogfile_120508_171442'
       mAP_dict = run_test_metric(num_imgs_list, self._net_sep, sess, filename=det_filename)
-      compression_stats.set(self._net_desc, 'detections_file', det_filename)
+      compression_stats.set(net_desc, 'detections_file', det_filename)
       for num_imgs, mAP in mAP_dict.items():
-        compression_stats.set(self._net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
-        compression_stats.set(self._net_desc, 'mAP_%d_top%d_delta'%
+        compression_stats.set(net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
+        compression_stats.set(net_desc, 'mAP_%d_top%d_delta'%
                               (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP - mAP_base_net)
         print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
-    else:
-      print('diff_mean_abs=%f'%diff_mean_abs)
+#     else:
+#       print('diff_mean_abs=%f'%diff_mean_abs)
       
     if run_profile_stats:
       profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph())
-      compression_stats.set_profile_stats(self._net_desc, profile_stats, base_profile_stats)
+      compression_stats.set_profile_stats(net_desc, profile_stats, base_profile_stats)
   
   def run_inference(self, blobs, base_outputs, compressed_layers):
   
@@ -323,7 +315,7 @@ class SeparableNet(object):
     return U, P
 
   def _get_low_rank_filters(self, weights, K): #for convolutional layers
-    C,d,N,W = self.tensor_to_matrix(weights) # W=Cd x Nd
+    C,d,N,W = self._tensor_to_matrix(weights) # W=Cd x Nd
     U,D,Qt = np.linalg.svd(W) # U=Cd x Cd, Q=Nd x Nd, D=Cd, 
     Q = np.transpose(Qt)
     

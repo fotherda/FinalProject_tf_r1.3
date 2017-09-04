@@ -9,7 +9,6 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"]="2"
 import tensorflow as tf
 import os.path
 import pickle as pi
-import dill
 import logging
 logging.getLogger("tensorflow").setLevel(logging.ERROR)
 tf.logging.set_verbosity(tf.logging.ERROR)
@@ -69,8 +68,8 @@ class ExperimentController(TensorFlowTestCase):
                           LayerName('cls_score'), LayerName('rois')]
 #     self._final_layers = [LayerName('cls_prob'), LayerName('bbox_pred'), LayerName('rois')]
     
-#     if os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
-    if False and os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
+    if os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
+#     if False and os.path.isfile('base_outputs.pi') and os.path.isfile('base_profile_stats.pi'):
       self._base_outputs_list = pi.load( open( 'base_outputs.pi', "rb" ) )
       self._base_profile_stats = pi.load( open( 'base_profile_stats.pi', "rb" ) )
     else:
@@ -152,9 +151,7 @@ class ExperimentController(TensorFlowTestCase):
     return Kmax
         
   def get_Ks(self, layer, K_fractions):
-#     Kmax = self.get_Kmax(layer)
     Kmax = self._all_Kmaxs_dict[layer]
-    
     Ks = []
     for K_frac in K_fractions:
       K = int(K_frac * Kmax)
@@ -176,111 +173,53 @@ class ExperimentController(TensorFlowTestCase):
     net_desc = CompressedNetDescription(K_by_layer_dict)
     return net_desc
   
-#   def build_net_desc(self, Kfrac):
-#     K_by_layer_dict = {}
-#     if Kfrac >= 0: #-ve => completely uncompressed net
-#       for layer_name in self._compressed_layers:
-#         K = self.get_Ks(layer_name, [Kfrac])
-#         K_by_layer_dict[layer_name] = K
-#     net_desc = CompressedNetDescription(K_by_layer_dict)
-#     return net_desc
-  
-#   def optimise_for_memory(self, max_iter, stats_file_suffix):
-#     guide_compression_stats = CompressionStats(filename_suffix=stats_file_suffix, 
-#                                 load_from_file=True, all_Kmaxs_dict=self._all_Kmaxs_dict)
-#     
-#     stats_dict = guide_compression_stats.build_label_layer_K_dict()
-#     objective_label = 'param_bytes_frac_delta'
-# #     objective_label = 'total_output_bytes_frac_delta'
-# #     objective_label = 'total_bytes_frac_delta'
-#     performance_label = 'diff_mean_cls_score'
-# #     performance_label = 'diff_mean_cls_prob'
-#     
-#     objective_dict = stats_dict[objective_label] #layer->K
-#     performance_dict = stats_dict[performance_label]
-# 
-#     #bbox_pred layer doesn't affect cls_score
-#     del objective_dict['bbox_pred']
-#     
-#     def remove_all_except_conv2_first_conv1(d):  
-#       filtered = {}
-#       for k,v in d.items():
-#         if 'block' not in k and 'conv1' in k:
-#           filtered[k] = v
-#         elif 'conv2' in k:
-#           filtered[k] = v
-#         elif 'rpn' in k:
-#           filtered[k] = v
-#       return filtered
-# 
-#     objective_dict = remove_all_except_conv2_first_conv1(objective_dict)
-#     
-#     layer_K_dict = {} 
-#     
-#     def get_K_old_new(layer):
-#       sorted_keys = list(reversed(sorted(objective_dict[layer].keys())))
-#       if layer in layer_K_dict:
-#         K_old = layer_K_dict[layer][0]
-#         idx = sorted_keys.index( K_old )
-#         if idx+1 < len(sorted_keys):
-#           K_new = sorted_keys[idx + 1]
-#         else:
-#           K_new = 0
-#       else:
-#         K_new = sorted_keys[0] #start with the largest K value
-#         K_old = 0
-#       return K_old, K_new
-# 
-#     scope_idx=1
-#     old_performance_metric = 0
-#     
-#     for iter in range(max_iter):#each iteration compresses 1 layer (a bit more)
-#       grad_dict = {}
-#       perf_delta_dict = {}
-#       for layer in objective_dict:
-#         K_old, K_new = get_K_old_new(layer)  
-#         if K_new == 0: #max compression reached for this layer
-#           continue
-#         elif K_old != 0: #already compressed this layer a bit
-#           objective_delta = objective_dict[layer][K_new] - objective_dict[layer][K_old]
-#           performance_delta = performance_dict[layer][K_new] - performance_dict[layer][K_old]
-#         else: #this layer hasn't been compressed at all yet
-#           objective_delta = objective_dict[layer][K_new]
-#           performance_delta = performance_dict[layer][K_new]
-#           
+  def _get_next_model(self, layer_K_dict, objective_dict, performance_dict):
+    def get_K_old_new(layer):
+      sorted_keys = list(reversed(sorted(objective_dict[layer].keys())))
+      if layer in layer_K_dict:
+        K_old = layer_K_dict[layer][0]
+        idx = sorted_keys.index( K_old )
+        if idx+1 < len(sorted_keys):
+          K_new = sorted_keys[idx + 1]
+        else:
+          K_new = 0
+      else:
+        K_new = sorted_keys[0] #start with the largest K value
+        K_old = 0
+      return K_old, K_new
+
+    grad_dict = {}
+    perf_delta_dict = {}
+    for layer in objective_dict:
+      K_old, K_new = get_K_old_new(layer)  
+      if K_new == 0: #max compression reached for this layer
+        continue
+      elif K_old != 0: #already compressed this layer a bit
+        objective_delta = objective_dict[layer][K_new] - objective_dict[layer][K_old]
+        performance_delta = performance_dict[layer][K_new] - performance_dict[layer][K_old]
+      else: #this layer hasn't been compressed at all yet
+        objective_delta = objective_dict[layer][K_new]
+        performance_delta = performance_dict[layer][K_new]
+        
+      objective_grad = objective_delta
 #         objective_grad = objective_delta / performance_delta
-#         grad_dict[objective_grad] = layer 
-#         perf_delta_dict[layer] = performance_delta
-#         
-#       grad_min = list(sorted(grad_dict))[0]
-#       layer_with_min_grad = grad_dict[grad_min]
-#       K_old, K_new = get_K_old_new(layer_with_min_grad)
-#       layer_K_dict[layer_with_min_grad] = [K_new]
-#       expected_perf_delta = perf_delta_dict[layer_with_min_grad]
-#       
-#       self._sess.close() #restart session to free memory and to reset profile stats
-#       tf.reset_default_graph()
-#       self._sess = tf.Session(config=self._tfconfig) 
-# 
-#       net_desc = CompressedNetDescription(layer_K_dict)
-#       
-#       sep_net = SeparableNet(scope_idx, self._base_net, self._sess, self._saved_model_path, 
-#                              self._all_comp_weights_dict, self._comp_bn_vars_dict, 
-#                              self._comp_bias_vars_dict, net_desc, self._base_variables)
-#       
-#       sep_net.run_performance_analysis(self._blobs_list, self._sess, self._base_outputs_list, 
-#                                        self._final_layers, self._compression_stats, 
-#                                        self._base_profile_stats, run_profile_stats=False)
-#       
-#       new_performance_metric = self._compression_stats.get(net_desc, performance_label)
-# #       objective_metric = self._compression_stats.get(net_desc, objective_label)
-#       actual_perf_delta = new_performance_metric - old_performance_metric
-#       print('%s: K:%d->%d perf=%f'%(layer_with_min_grad,K_old,K_new,new_performance_metric))
-#       print('expected perf delta=%.3f, actual perf delta=%.3f'%(expected_perf_delta,actual_perf_delta))
-#       old_performance_metric = new_performance_metric
-#       
-#       scope_idx += 1
-  
+      grad_dict[objective_grad] = layer 
+      perf_delta_dict[layer] = performance_delta
+      
+    grad_min = list(sorted(grad_dict))[0]
+    layer_with_min_grad = grad_dict[grad_min]
+    K_old, K_new = get_K_old_new(layer_with_min_grad)
+    layer_K_dict[layer_with_min_grad] = [K_new]
+    expected_perf_delta = perf_delta_dict[layer_with_min_grad]
+
+    print('%s: K:%d->%d'%(layer_with_min_grad,K_old,K_new))
+
+    return layer_K_dict, expected_perf_delta
+
+  def _get_next_Kfrac(self, Kfrac):
+    print('All layers Kfrac=%.3f'%(Kfrac))
+    return self.build_net_desc([Kfrac]), None
+    
   def optimise_with_plurinet(self, max_iter, stats_file_suffix):
     guide_compression_stats = CompressionStats(filename_suffix=stats_file_suffix, 
                                 load_from_file=True, all_Kmaxs_dict=self._all_Kmaxs_dict)
@@ -311,83 +250,41 @@ class ExperimentController(TensorFlowTestCase):
 
     objective_dict = remove_all_except_conv2_first_conv1(objective_dict)
     
-    layer_K_dict = {} 
-    
-    def get_K_old_new(layer):
-      sorted_keys = list(reversed(sorted(objective_dict[layer].keys())))
-      if layer in layer_K_dict:
-        K_old = layer_K_dict[layer][0]
-        idx = sorted_keys.index( K_old )
-        if idx+1 < len(sorted_keys):
-          K_new = sorted_keys[idx + 1]
-        else:
-          K_new = 0
-      else:
-        K_new = sorted_keys[0] #start with the largest K value
-        K_old = 0
-      return K_old, K_new
-
-#     compressed_layers = get_all_compressible_layers()
-#     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
-    compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2')]
-#     Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
-    Kfracs = [1.0]
+    compressed_layers = get_all_compressible_layers()
+    compressed_layers = keep_only_conv_not_1x1(compressed_layers)
+#     compressed_layers = [LayerName('conv1')]
+#     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2')]
+    Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+#     Kfracs = [1.0]
     num_imgs_list=[]
+    old_performance_metric = 0
+    layer_K_dict = {} 
 
     pluri_net, mAP_base_net = self.init_plurinet(num_imgs_list, compressed_layers, Kfracs)
-
-    scope_idx=1
-    old_performance_metric = 0
     
-    for iter in range(max_iter):#each iteration compresses 1 layer (a bit more)
-      grad_dict = {}
-      perf_delta_dict = {}
-      for layer in objective_dict:
-        K_old, K_new = get_K_old_new(layer)  
-        if K_new == 0: #max compression reached for this layer
-          continue
-        elif K_old != 0: #already compressed this layer a bit
-          objective_delta = objective_dict[layer][K_new] - objective_dict[layer][K_old]
-          performance_delta = performance_dict[layer][K_new] - performance_dict[layer][K_old]
-        else: #this layer hasn't been compressed at all yet
-          objective_delta = objective_dict[layer][K_new]
-          performance_delta = performance_dict[layer][K_new]
-          
-        objective_grad = objective_delta / performance_delta
-        grad_dict[objective_grad] = layer 
-        perf_delta_dict[layer] = performance_delta
-        
-      grad_min = list(sorted(grad_dict))[0]
-      layer_with_min_grad = grad_dict[grad_min]
-      K_old, K_new = get_K_old_new(layer_with_min_grad)
-      layer_K_dict[layer_with_min_grad] = [K_new]
-      expected_perf_delta = perf_delta_dict[layer_with_min_grad]
+#     for iter in range(max_iter):#each iteration compresses 1 layer (a bit more)
+#       layer_K_dict, expected_perf_delta = self._get_next_model(layer_K_dict, objective_dict, 
+#                                                               performance_dict)
+    for Kfrac in reversed(Kfracs):
+      layer_K_dict, expected_perf_delta = self._get_next_Kfrac(Kfrac)
       
-      net_desc = CompressedNetDescription(layer_K_dict)
       compression_stats = CompressionStats(load_from_file=False)
+      net_desc = CompressedNetDescription(layer_K_dict)
+      pluri_net.set_active_path_through_net(net_desc, self._sess)
 
       pluri_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
                                    self._final_layers, compression_stats, 
                                    self._base_profile_stats, mAP_base_net, num_imgs_list)
 
-
-#       sep_net = SeparableNet(self._base_net, self._sess, self._saved_model_path, 
-#                              self._all_comp_weights_dict, self._comp_bn_vars_dict, 
-#                              self._comp_bias_vars_dict, net_desc, self._base_variables)
-#       
-#       sep_net.run_performance_analysis(self._blobs_list, self._sess, self._base_outputs_list, 
-#                                        self._final_layers, self._compression_stats, 
-#                                        self._base_profile_stats, run_profile_stats=False)
-      
-      new_performance_metric = self._compression_stats.get(net_desc, performance_label)
-#       objective_metric = self._compression_stats.get(net_desc, objective_label)
+      new_performance_metric = compression_stats.get(net_desc, performance_label)
+      objective_metric = compression_stats.get(net_desc, objective_label)
       actual_perf_delta = new_performance_metric - old_performance_metric
-      print('%s: K:%d->%d perf=%f'%(layer_with_min_grad,K_old,K_new,new_performance_metric))
-      print('expected perf delta=%.3f, actual perf delta=%.3f'%(expected_perf_delta,actual_perf_delta))
+      print('%s=%f'%(performance_label,new_performance_metric))
+      print('%s=%f'%(objective_label,objective_metric))
+#       print('%s: K:%d->%d %s=%f'%(layer_with_min_grad,K_old,K_new,performance_label,new_performance_metric))
+      if expected_perf_delta:
+        print('expected/actual \u0394perf=%.3f / %.3f'%(expected_perf_delta,actual_perf_delta))
       old_performance_metric = new_performance_metric
-      
-      scope_idx += 1
-
   
   def run_split_net_exp(self, num_imgs, ):
     compressed_layers_all = get_all_compressible_layers()

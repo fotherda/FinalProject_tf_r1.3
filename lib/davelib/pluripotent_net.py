@@ -122,16 +122,19 @@ class PluripotentNet(SeparableNet):
 #     return [assign_op_1, assign_op_2]
 
 
-  def run_performance_analysis(self, net_desc, blobs_list, sess, base_outputs_list, output_layers, 
-                               compression_stats, base_profile_stats, mAP_base_net=None, 
-                               num_imgs_list=[], plot=False, run_profile_stats=True):
- 
+  def set_active_path_through_net(self, net_desc, sess):
     self._net_sep.set_active_path_through_net(net_desc, sess)
-    
-    super(PluripotentNet, self).run_performance_analysis(blobs_list, sess, base_outputs_list, output_layers, 
-                               compression_stats, base_profile_stats, mAP_base_net=mAP_base_net, 
-                               num_imgs_list=num_imgs_list, plot=plot, run_profile_stats=run_profile_stats)
- 
+
+#   def run_performance_analysis(self, net_desc, blobs_list, sess, base_outputs_list, output_layers, 
+#                                compression_stats, base_profile_stats, mAP_base_net=None, 
+#                                num_imgs_list=[], plot=False, run_profile_stats=True):
+#  
+#     self._net_sep.set_active_path_through_net(net_desc, sess)
+#     
+#     super(PluripotentNet, self).run_performance_analysis(blobs_list, sess, base_outputs_list, output_layers, 
+#                                compression_stats, base_profile_stats, mAP_base_net=mAP_base_net, 
+#                                num_imgs_list=num_imgs_list, plot=plot, run_profile_stats=run_profile_stats)
+#  
  
 #     if base_outputs_list is None:
 #       base_outputs_list = self._base_net.get_outputs_multi_image(blobs_list, output_layers, sess)

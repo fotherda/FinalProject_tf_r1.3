@@ -15,11 +15,6 @@ import sys
 from collections import OrderedDict,defaultdict
 from matplotlib.ticker import MaxNLocator, FuncFormatter, FormatStrFormatter
 from sklearn import linear_model
-# from sklearn import cross_validation
-# from scipy import optimize
-# from scipy.optimize import least_squares, minimize
-# import pyqt_fit.nonparam_regression as smooth
-# from pyqt_fit import npr_methods, plot_fit
 from kernel_regression import KernelRegression
 from sklearn.svm import SVR
 # from sklearn.grid_search import GridSearchCV

@@ -1,4 +1,3 @@
-
 '''
 Created on 28 Jul 2017
 
@@ -116,8 +115,8 @@ class ProfileStats(object):
     try:
       other_total = getattr( getattr(other, statsname), attrname)
       this_total = getattr( getattr(self, statsname), attrname)
-#       return  this_total - other_total
-      return None
+      return  this_total - other_total
+#       return None
     except AttributeError as errno:
       print("AttributeError error({0})".format(errno))
       return None
@@ -174,15 +173,15 @@ class ProfileStats(object):
   def serialize_data(self, graph, run_metadata_list):
     devnull = open(os.devnull, 'w')
     f = io.BytesIO()
-    with RedirectStdStreams(stderr=devnull): #this stops a meaningless error on stderr
-#     with stdout_redirector(f): #remove 'Parsing Inputs...'
-      profiler = Profiler(graph)
+    with stdout_redirector(f): #remove 'Parsing Inputs...'
+      with RedirectStdStreams(stderr=devnull): #this stops a meaningless error on stderr
+        profiler = Profiler(graph)
 
     for i, run_metadata in enumerate(run_metadata_list):
       profiler.add_step(i+1, run_metadata)
     
     #use these to print to stdout
-#     profiler.profile_name_scope(PARAM_OPTIONS_PRINT)
+    profiler.profile_name_scope(PARAM_OPTIONS_PRINT)
 #     profiler.profile_name_scope(PERF_OPTIONS_PRINT)
 
     param_opts = _build_options(PARAM_OPTIONS)

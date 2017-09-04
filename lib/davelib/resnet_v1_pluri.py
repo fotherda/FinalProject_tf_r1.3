@@ -226,7 +226,23 @@ class resnetv1_pluri(resnetv1_sep):
     return tf.case(case_dict, default=uncompressed_func, exclusive=True)
 
 
-  def set_active_path_through_net(self, net_desc, sess, print_path=False):   
+  def _check_proposed_active_path(self, net_desc):
+    #the active path must be a subset of the possible layers and Ks
+    for layer, Ks in net_desc.items():
+      active_K = Ks[0]
+      active_K_possible = False
+      if layer in self._net_desc:
+        Ks_ = self._net_desc[layer]
+        for K in Ks_:
+          if active_K == K:
+            active_K_possible = True
+            break
+      if not active_K_possible:
+        raise ValueError('%s with active_K=%d isn\'t possible'%(layer, active_K))
+    
+  def set_active_path_through_net(self, net_desc, sess, print_path=False):
+    self._check_proposed_active_path(net_desc)
+       
     self._active_Ks = np.zeros( len(net_desc) ) 
     keys_tensor, _ = self._K_by_layer_table.export()
     layers = sess.run([keys_tensor])
@@ -267,41 +283,41 @@ class resnetv1_pluri(resnetv1_sep):
                                                     feed_dict=feed_dict)
     return cls_score, cls_prob, bbox_pred, rois
     
-  def get_outputs_multi_image(self, blobs_list, output_layers, sess):
-    outputs_list = []
-    run_metadata_list = []
-    
-    for blobs in blobs_list:
-      outputs, run_metadata = self.get_outputs(blobs, output_layers, sess)
-      outputs_list.append(outputs)
-      run_metadata_list.append(run_metadata)
-    return outputs_list, run_metadata_list
+#   def get_outputs_multi_image(self, blobs_list, output_layers, sess):
+#     outputs_list = []
+#     run_metadata_list = []
+#     
+#     for blobs in blobs_list:
+#       outputs, run_metadata = self.get_outputs(blobs, output_layers, sess)
+#       outputs_list.append(outputs)
+#       run_metadata_list.append(run_metadata)
+#     return outputs_list, run_metadata_list
 
 
-  def get_outputs(self, blobs, output_layers, sess):
-#     output_layers.append(LayerName('conv1'))
-#     layer = LayerName('block4/unit_3/bottleneck_v1/conv2')
-#     layer = LayerName('rpn_conv/3x3')
-     
-    feed_dict = {self._image: blobs['data'],
-                 self._im_info: blobs['im_info'],
-                 self._gt_boxes: np.zeros((10,5))}
-    fetches = {}
-    
-    for collection_name in ops.get_all_collection_keys():
-      if self._resnet_scope in collection_name:
-        collection_dict = utils.convert_collection_to_dict(collection_name)
-        for alias, tensor in collection_dict.items():
-          alias = remove_net_suffix(alias, self._resnet_scope)
-          for output_layer in output_layers:
-            if output_layer.net_layer(self._resnet_scope) in alias:
-              fetches[output_layer] = tensor
-              
-    # Run the graph with full trace option
-    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    run_metadata = tf.RunMetadata()
-    outputs = sess.run(fetches, feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
-    return outputs, run_metadata  
+#   def get_outputs(self, blobs, output_layers, sess):
+# #     output_layers.append(LayerName('conv1'))
+# #     layer = LayerName('block4/unit_3/bottleneck_v1/conv2')
+# #     layer = LayerName('rpn_conv/3x3')
+#      
+#     feed_dict = {self._image: blobs['data'],
+#                  self._im_info: blobs['im_info'],
+#                  self._gt_boxes: np.zeros((10,5))}
+#     fetches = {}
+#     
+#     for collection_name in ops.get_all_collection_keys():
+#       if self._resnet_scope in collection_name:
+#         collection_dict = utils.convert_collection_to_dict(collection_name)
+#         for alias, tensor in collection_dict.items():
+#           alias = remove_net_suffix(alias, self._resnet_scope)
+#           for output_layer in output_layers:
+#             if output_layer.net_layer(self._resnet_scope) in alias:
+#               fetches[output_layer] = tensor
+#               
+#     # Run the graph with full trace option
+#     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+#     run_metadata = tf.RunMetadata()
+#     outputs = sess.run(fetches, feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
+#     return outputs, run_metadata  
       
   def fully_connected(self, input_, num_outputs, is_training, initializer, layer_name):
     if layer_name not in self._net_desc:
