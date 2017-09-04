@@ -140,36 +140,52 @@ class CompressionStats(object):
   def get(self, net_desc, type_label):
     return self._stats[net_desc][type_label]
 
+#   def set_profile_stats(self, net_desc, profile_stats, base_profile_stats):
+#     self.set(net_desc, 'profile_stats', profile_stats)
+#     self.set(net_desc, 'base_profile_stats', base_profile_stats)
+#     self._set_profile_stats(net_desc, profile_stats, base_profile_stats)
+# #     self._set_profile_stats(net_desc, profile_stats, base_profile_stats, 'count_delta')
+# #     self._set_profile_stats(net_desc, profile_stats, base_profile_stats, 'frac_delta')
+  
   def set_profile_stats(self, net_desc, profile_stats, base_profile_stats):
     self.set(net_desc, 'profile_stats', profile_stats)
     self.set(net_desc, 'base_profile_stats', base_profile_stats)
-    self._set_profile_stats(net_desc, profile_stats, base_profile_stats, 'count_delta')
-    self._set_profile_stats(net_desc, profile_stats, base_profile_stats, 'frac_delta')
-  
-  def _set_profile_stats(self, net_desc, profile_stats, base_profile_stats, count_or_frac):
-    func = getattr(profile_stats, count_or_frac)
     
-    self.set(net_desc, 'params_'+count_or_frac, func(
-                          base_profile_stats, '_param_stats', 'total_parameters'))
-    self.set(net_desc, 'flops_'+count_or_frac, func(
-                          base_profile_stats, '_perf_stats', 'total_float_ops'))
-    self.set(net_desc, 'param_bytes_'+count_or_frac, func(
-                          base_profile_stats, '_param_stats', 'total_requested_bytes'))
-    self.set(net_desc, 'perf_bytes_'+count_or_frac, func(
-                          base_profile_stats, '_perf_stats', 'total_requested_bytes'))
-    self.set(net_desc, 'micros_'+count_or_frac, func(
-                          base_profile_stats, '_perf_stats', 'total_cpu_exec_micros'))
-    self.set(net_desc, 'peak_bytes_'+count_or_frac, func(
-                          base_profile_stats, '_scope_all_stats', 'total_peak_bytes'))
-    self.set(net_desc, 'output_bytes_'+count_or_frac, func(
-                          base_profile_stats, '_scope_all_stats', 'total_output_bytes'))
-    self.set(net_desc, 'run_count_'+count_or_frac, func(
-                          base_profile_stats, '_scope_all_stats', 'total_run_count'))
-    self.set(net_desc, 'definition_count_'+count_or_frac, func(
-                          base_profile_stats, '_scope_all_stats', 'total_definition_count'))
+    for statsname, attrname, label in [('_param_stats', 'total_parameters', 'params'),
+                                ('_param_stats', 'total_requested_bytes', 'param_bytes'),
+                                ('_perf_stats', 'total_float_ops', 'flops'),
+                                ('_perf_stats', 'total_requested_bytes', 'perf_bytes'),
+                                ('_perf_stats', 'total_cpu_exec_micros', 'micros'),
+                                ('_perf_stats', 'total_peak_bytes', 'peak_bytes'),
+                                ('_scope_all_stats', 'total_peak_bytes', 'output_bytes'),
+                                ('_scope_all_stats', 'total_run_count', 'run_count'),
+                                ('_scope_all_stats', 'total_definition_count', 'definition_count')
+                                ]:
     
-    func = getattr(profile_stats, 'total_bytes_'+count_or_frac)
-    self.set(net_desc, 'total_bytes_'+count_or_frac, func(base_profile_stats))
+      count_delta, frac_delta = profile_stats.count_and_frac_delta(base_profile_stats, 
+                                                                   statsname, attrname)
+      self.set(net_desc, label+'_count_delta', count_delta)
+      self.set(net_desc, label+'_frac_delta', frac_delta)
+    
+#     self.set(net_desc, 'flops_'+count_or_frac, func(
+#                           base_profile_stats, '_perf_stats', 'total_float_ops'))
+#     self.set(net_desc, 'param_bytes_'+count_or_frac, func(
+#                           base_profile_stats, '_param_stats', 'total_requested_bytes'))
+#     self.set(net_desc, 'perf_bytes_'+count_or_frac, func(
+#                           base_profile_stats, '_perf_stats', 'total_requested_bytes'))
+#     self.set(net_desc, 'micros_'+count_or_frac, func(
+#                           base_profile_stats, '_perf_stats', 'total_cpu_exec_micros'))
+#     self.set(net_desc, 'peak_bytes_'+count_or_frac, func(
+#                           base_profile_stats, '_scope_all_stats', 'total_peak_bytes'))
+#     self.set(net_desc, 'output_bytes_'+count_or_frac, func(
+#                           base_profile_stats, '_scope_all_stats', 'total_output_bytes'))
+#     self.set(net_desc, 'run_count_'+count_or_frac, func(
+#                           base_profile_stats, '_scope_all_stats', 'total_run_count'))
+#     self.set(net_desc, 'definition_count_'+count_or_frac, func(
+#                           base_profile_stats, '_scope_all_stats', 'total_definition_count'))
+     
+#     func = getattr(profile_stats, 'total_bytes_'+count_or_frac)
+#     self.set(net_desc, 'total_bytes_'+count_or_frac, func(base_profile_stats))
     
   def save(self, suffix=None):
     if not suffix:

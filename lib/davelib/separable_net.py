@@ -257,7 +257,7 @@ class SeparableNet(object):
 #       print('diff_mean_abs=%f'%diff_mean_abs)
       
     if run_profile_stats:
-      profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph())
+      profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph(), net_desc)
       compression_stats.set_profile_stats(net_desc, profile_stats, base_profile_stats)
   
   def run_inference(self, blobs, base_outputs, compressed_layers):

@@ -44,6 +44,51 @@ class LayerName(str):
   def sep_version(self):
     return LayerName(self.layer_weights().replace('conv', 'convsep'), self.flag)
     
+  def remove_batch_norm(self):
+    if 'BatchNorm' in self:
+      end_idx = self.index('BatchNorm') - 1
+      ret_val = self[:end_idx]
+    else:
+      ret_val = self
+    return LayerName(ret_val)  
+    
+  def remove_biases(self):
+    if 'biases' in self:
+      end_idx = self.index('biases') - 1
+      ret_val = self[:end_idx]
+    else:
+      ret_val = self
+    return LayerName(ret_val)  
+    
+  def uncompressed_version(self):
+    no_bn = self.remove_batch_norm().remove_biases()
+    if 'K' in no_bn:
+      start_idx = no_bn.find('sep') - 1 #remove  '_' prefix
+      if start_idx == -2: 
+        start_idx = no_bn.find('K') - 1 #remove  '_' prefix
+      end_idx = no_bn.find('/', start_idx)
+      if end_idx == -1: 
+        end_idx = len(no_bn)
+      ret_val = no_bn[:start_idx] + no_bn[end_idx:]
+    else:
+      ret_val = no_bn
+    return ret_val  
+    
+  def is_compressed(self):
+    K = self.K()
+    return K != 0
+    
+  def K(self):
+    if 'K' in self:
+      start_idx = self.index('K')+1
+      end_idx = self.find('/', start_idx)
+      if end_idx == -1: 
+        end_idx = len(self)
+      K  = int(self[start_idx:end_idx])
+    else:
+      K = 0
+    return K  
+    
     
 __COMPRESSIBLE_LAYERS__ = None
 

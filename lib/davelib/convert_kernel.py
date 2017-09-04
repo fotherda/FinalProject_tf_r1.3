@@ -254,8 +254,8 @@ class ExperimentController(TensorFlowTestCase):
     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = [LayerName('conv1')]
 #     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2')]
-    Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
-#     Kfracs = [1.0]
+#     Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+    Kfracs = [1.0]
     num_imgs_list=[]
     old_performance_metric = 0
     layer_K_dict = {} 
@@ -536,7 +536,8 @@ def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
 #   exp_controller.run_exp(num_imgs_list=[10])
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)
-  exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')
+  exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='allLayersKfrac1.0')
+#   exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')
   
 
     #do the plotting      

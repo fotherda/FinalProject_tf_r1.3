@@ -262,12 +262,11 @@ class resnetv1_pluri(resnetv1_sep):
     self._K_by_layer_table.insert(tf.constant(keys, dtype=tf.string), 
                                   tf.constant(values, dtype=tf.int64)).run(session=sess)
     
-#     s = self._K_by_layer_table.size().eval(session=sess)
-    keys, values = self._K_by_layer_table.export()
-    layers, Ks = sess.run([keys, values])
-    
     if print_path:
       print('Active path through net:')
+  #     s = self._K_by_layer_table.size().eval(session=sess)
+      keys, values = self._K_by_layer_table.export()
+      layers, Ks = sess.run([keys, values])
       for layer, K in sorted(zip(layers, Ks)):
         print('\t%s\tK=%d'%(layer.decode("utf-8"), K))
 
