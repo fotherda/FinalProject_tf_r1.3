@@ -25,9 +25,17 @@ from functools import total_ordering
 from mpl_toolkits.mplot3d import *
 from random import random, seed
 from matplotlib import cm
+from davelib.profile_stats import ProfileStats
 
 root_filename = 'CompressionStats_'
 
+class NetChange():
+  
+  def __init__(self, layer, K_old, K_new):
+    self._layer = layer
+    self._K_old = K_old
+    self._K_new = K_new
+    
 
 @total_ordering
 class CompressedNetDescription(dict):
@@ -77,7 +85,6 @@ class CompressedNetDescription(dict):
       return False
     else:
       return list(self.keys())[0] < list(other.keys())[0]
-#     return list(self.keys())[0] < list(other.keys())[0]
   
 #   def __str__(self):
 #     return '\n'.join(map(str, sorted(self.items())))
@@ -87,10 +94,13 @@ class CompressedNetDescription(dict):
       return 0.0
     for layer, K in self.items():
       if 'block4' in layer and 'conv2' in layer:
-        Kfrac = K / 768.0
+        Kfrac = K[0] / 768.0
         break
       elif 'block3' in layer and 'conv2' in layer:
-        Kfrac = K / 384.0
+        Kfrac = K[0] / 384.0
+        break
+      elif 'block' not in layer and 'conv1' in layer:
+        Kfrac = K[0] / 20.0
         break
     return Kfrac
 
@@ -101,6 +111,7 @@ class CompressionStats(object):
     self._all_Kmaxs_dict = all_Kmaxs_dict
     if load_from_file: #load from pickle file
       self.load_from_file(root_filename+filename_suffix+'.pi')
+      self.convert_old_names_to_new()
     else:  
       self._stats = defaultdict( dict )
       
@@ -114,7 +125,12 @@ class CompressionStats(object):
         str_list.append(type_label + '\t' + str(value) + '\n')
     return ''.join(str_list)
   
-  
+  def convert_old_names_to_new(self):
+    for data_dict in self._stats.values():
+      for old_label, value in data_dict.copy().items():
+        new_label = old_label.replace('flops','float_ops') 
+        data_dict[new_label] = value
+        
   def print_Kfracs(self):
     str_list = []
     str_list.append('Kfracs:\n')
@@ -126,13 +142,10 @@ class CompressionStats(object):
     for type_label in d:
         str_list.append(type_label + '\n')
     
+  
     print( ''.join(str_list) )
-  
-  
   def load_from_file(self, filename):  
     self._stats = pi.load( open( filename, "rb") ) 
-#     self._stats = pi.load( open( filename, "rb"), encoding='latin1' ) 
-#     print self._stats   
 
   def set(self, net_desc, type_label, value):
     self._stats[net_desc][type_label] = value
@@ -140,52 +153,27 @@ class CompressionStats(object):
   def get(self, net_desc, type_label):
     return self._stats[net_desc][type_label]
 
-#   def set_profile_stats(self, net_desc, profile_stats, base_profile_stats):
-#     self.set(net_desc, 'profile_stats', profile_stats)
-#     self.set(net_desc, 'base_profile_stats', base_profile_stats)
-#     self._set_profile_stats(net_desc, profile_stats, base_profile_stats)
-# #     self._set_profile_stats(net_desc, profile_stats, base_profile_stats, 'count_delta')
-# #     self._set_profile_stats(net_desc, profile_stats, base_profile_stats, 'frac_delta')
-  
   def set_profile_stats(self, net_desc, profile_stats, base_profile_stats):
     self.set(net_desc, 'profile_stats', profile_stats)
     self.set(net_desc, 'base_profile_stats', base_profile_stats)
     
-    for statsname, attrname, label in [('_param_stats', 'total_parameters', 'params'),
-                                ('_param_stats', 'total_requested_bytes', 'param_bytes'),
-                                ('_perf_stats', 'total_float_ops', 'flops'),
-                                ('_perf_stats', 'total_requested_bytes', 'perf_bytes'),
-                                ('_perf_stats', 'total_cpu_exec_micros', 'micros'),
-                                ('_perf_stats', 'total_peak_bytes', 'peak_bytes'),
-                                ('_scope_all_stats', 'total_peak_bytes', 'output_bytes'),
-                                ('_scope_all_stats', 'total_run_count', 'run_count'),
-                                ('_scope_all_stats', 'total_definition_count', 'definition_count')
+    for statsname, attrname in [
+#                                 ('_scope_all_stats', 'cpu_exec_micros'),
+                                ('_scope_all_stats', 'parameters'),
+                                ('_scope_all_stats', 'float_ops'),
+                                ('_scope_all_stats', 'peak_bytes'),
+                                ('_scope_all_stats', 'output_bytes'),
+                                ('_scope_all_stats', 'requested_bytes'),
+                                ('_scope_all_stats', 'residual_bytes'),
+                                ('_scope_all_stats', 'run_count'),
+                                ('_scope_all_stats', 'definition_count')
                                 ]:
     
+#       profile_stats.compare_nodes(base_profile_stats, attrname)
       count_delta, frac_delta = profile_stats.count_and_frac_delta(base_profile_stats, 
                                                                    statsname, attrname)
-      self.set(net_desc, label+'_count_delta', count_delta)
-      self.set(net_desc, label+'_frac_delta', frac_delta)
-    
-#     self.set(net_desc, 'flops_'+count_or_frac, func(
-#                           base_profile_stats, '_perf_stats', 'total_float_ops'))
-#     self.set(net_desc, 'param_bytes_'+count_or_frac, func(
-#                           base_profile_stats, '_param_stats', 'total_requested_bytes'))
-#     self.set(net_desc, 'perf_bytes_'+count_or_frac, func(
-#                           base_profile_stats, '_perf_stats', 'total_requested_bytes'))
-#     self.set(net_desc, 'micros_'+count_or_frac, func(
-#                           base_profile_stats, '_perf_stats', 'total_cpu_exec_micros'))
-#     self.set(net_desc, 'peak_bytes_'+count_or_frac, func(
-#                           base_profile_stats, '_scope_all_stats', 'total_peak_bytes'))
-#     self.set(net_desc, 'output_bytes_'+count_or_frac, func(
-#                           base_profile_stats, '_scope_all_stats', 'total_output_bytes'))
-#     self.set(net_desc, 'run_count_'+count_or_frac, func(
-#                           base_profile_stats, '_scope_all_stats', 'total_run_count'))
-#     self.set(net_desc, 'definition_count_'+count_or_frac, func(
-#                           base_profile_stats, '_scope_all_stats', 'total_definition_count'))
-     
-#     func = getattr(profile_stats, 'total_bytes_'+count_or_frac)
-#     self.set(net_desc, 'total_bytes_'+count_or_frac, func(base_profile_stats))
+      self.set(net_desc, attrname+'_count_delta', count_delta)
+      self.set(net_desc, attrname+'_frac_delta', frac_delta)
     
   def save(self, suffix=None):
     if not suffix:
@@ -529,13 +517,15 @@ class CompressionStats(object):
     calced_Kfracs = [] 
      
     for net_desc, data_dict in sorted(self._stats.items()):
+      Kfrac = net_desc.get_Kfrac() 
       for type_label, value in sorted(data_dict.items()):
+        if type(value) is ProfileStats:
+          continue 
         if plot_type_label and plot_type_label != type_label:
 #         if plot_type_label and plot_type_label not in type_label:
           continue
-        if type_label =='var_redux':
-          value = int( (base_total - value) / 1000000 )
-        Kfrac = net_desc.get_Kfrac() 
+#         if type_label =='var_redux':
+#           value = int( (base_total - value) / 1000000 )
         if Kfrac != 0:
           calced_Kfracs.append( Kfrac )
           plot_data.append(value)
@@ -552,6 +542,43 @@ class CompressionStats(object):
 #     plt.ylabel('mAP')
 #     plt.xlabel(r'fraction of $K_{max}$')
     plt.xlabel(r'$K_{frac}$', weight='bold')
+    plt.show()  
+     
+     
+  def plot_data_type_by_Kfracs(self, plot_type_labels=None):
+    #one line running across all Kfracs for each data type
+    fig, ax = plt.subplots()
+    plot_data = defaultdict( list ) 
+     
+    for net_desc, data_dict in sorted(self._stats.items()):
+      Kfrac = net_desc.get_Kfrac() 
+      for type_label, value in data_dict.items():
+        if type(value) is ProfileStats:
+          continue 
+        if plot_type_labels and type_label not in plot_type_labels:
+          continue
+        if Kfrac != 0:
+          plot_data[type_label].append( (Kfrac,value) )
+        else:
+          plt.axhline(y=value, color='r', linewidth=0.5)
+
+    plt.ticklabel_format(style='plain')
+    
+    for plt_idx, (type_label, data_list) in enumerate(sorted(plot_data.items())):
+      mtx = np.array(data_list)
+      mtx = mtx[mtx[:,0].argsort()]
+      ax = plt.subplot(len(plot_data)/2, 2, plt_idx+1)
+      ax.plot(mtx[:,0], mtx[:,1],'o-')
+      ax.set_ylabel('$\Delta$ '+type_label.replace('_',' ').replace('delta',''), fontsize=12)
+      ax.axhline(y=0, color='r', linewidth=0.5)
+      if plt_idx % 2 == 1:
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: '{:.1%}'.format(y))) 
+      else:
+        ax.yaxis.get_major_formatter().set_powerlimits((0, 1))
+      if plt_idx >= len(plot_data)-2:
+        ax.set_xlabel(r'$K_{frac}$', weight='bold', fontsize=14)
+
+    plt.subplots_adjust(left=0.08, right=0.98, top=0.98, bottom=0.06, hspace=0.3, wspace=0.38)
     plt.show()  
      
        
@@ -608,7 +635,6 @@ class CompressionStats(object):
     plt.legend(legend_labels, title=r'fraction of $K_{max}$')
     plt.show()  
      
-       
   def plot_correlation(self, type_labels, labels=None):
 #     legend_labels = []
     if not labels:

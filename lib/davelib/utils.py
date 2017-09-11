@@ -15,6 +15,20 @@ from contextlib import contextmanager
 from davelib.voc_img_sampler import VOCImgSampler
 from model.test import test_net, test_net_with_sample
 from datasets.factory import get_imdb
+from utils.timer import Timer
+
+
+class colour:
+  PURPLE = '\033[95m'
+  CYAN = '\033[96m'
+  DARKCYAN = '\033[36m'
+  BLUE = '\033[94m'
+  GREEN = '\033[92m'
+  YELLOW = '\033[93m'
+  RED = '\033[91m'
+  BOLD = '\033[1m'
+  UNDERLINE = '\033[4m'
+  END = '\033[0m'
 
   
 def run_test_metric(num_imgs_list, net, sess, filename=None):
@@ -49,6 +63,16 @@ def run_test_metric(num_imgs_list, net, sess, filename=None):
 libc = ctypes.CDLL(None)
 c_stdout = ctypes.c_void_p.in_dll(libc, 'stdout')
 c_stderr = ctypes.c_void_p.in_dll(libc, 'stderr')
+
+
+@contextmanager
+def timer(desc=''):
+  _t = Timer()
+  _t.tic()
+  yield
+  _t.toc()
+  print(desc + ' took: {:.3f}s' .format( _t.diff))
+    
 
 @contextmanager
 def stdout_redirector(stream):
@@ -96,8 +120,8 @@ def stdout_redirector(stream):
 def stderr_redirector(stream):
     class UnbufferedTextIOWrapper(io.TextIOWrapper):
       def write(self, s):
-        super(UnbufferedTextIOWrapper, self).write(s)
         self.flush()
+        super(UnbufferedTextIOWrapper, self).write(s)
 
     # The original fd stderr points to. Usually 1 on POSIX systems.
     original_stderr_fd = sys.stderr.fileno()
@@ -162,8 +186,8 @@ def test_stderr_redirector():
 
 def show_all_variables(show, *args):
   total_count = 0
-  for idx, var in enumerate(tf.global_variables()):
-#   for idx, var in enumerate(tf.get_default_graph().as_graph_def().node):
+  for idx, var in enumerate(tf.get_default_graph().as_graph_def().node):
+#   for idx, var in enumerate(tf.global_variables()):
 #   for idx, op in enumerate(tf.get_default_graph().get_operations()):
     shape = (0)
     if args:
@@ -192,6 +216,39 @@ def show_all_variables(show, *args):
     total_count += int(count)
   if show:
     print("[Total] variable size: %s" % "{:,}".format(total_count))
+  return total_count
+
+def show_all_nodes(show, *args):
+  total_count = 0
+  for idx, var in enumerate(tf.get_default_graph().as_graph_def().node):
+    shape = (0)
+#     if args:
+#       for name_filter in args:
+#         if name_filter not in var.name:
+#           continue
+#         else:
+#           shape = var.get_shape()
+#     else:
+#       shape = var.get_shape()
+#       if 'shape' in var.attr.keys():
+#         for a in var.attr['shape'].shape.dim:
+#           if int(a.size) < 0:
+#             print(var.name)
+            
+#         print(var.name, [int(a.size) for a in var.attr['shape'].shape.dim])
+#       shape = var.attr['shape'].shape.dim[1].size
+    
+#     for s in shape:
+#       if s < 1:
+#         print(var.name)
+#     count = np.prod(shape)
+    
+    if show:
+#     if show and count>0:
+      print("[%2d] %s" % (idx, var.name))
+#     total_count += int(count)
+#   if show:
+#     print("[Total] variable size: %s" % "{:,}".format(total_count))
   return total_count
 
 def remove_net_suffix(input_str, net_root):

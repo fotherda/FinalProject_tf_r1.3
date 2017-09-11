@@ -25,16 +25,6 @@ class PluripotentNet(SeparableNet):
     SeparableNet.__init__(self, base_net, sess, saved_model_path, base_weights_dict, 
                comp_bn_vars_dict, comp_bias_vars_dict, net_desc_pluri, base_variables, filename)
 
-#   def _build_net(self):
-# #     self._net_sep = resnetv1_pluri(scope_idx, batch_size=1, num_layers=101, 
-# #                         base_weights_dict=self._base_weights_dict, net_desc=self._net_desc,
-# #                         sess=self._sess)
-#     self._net_sep.create_architecture(self._sess, "TEST", 21,
-#                           tag='default', anchor_scales=[8, 16, 32])
-# #     show_all_variables(True, self._net_sep.get_scope())
-#     self.assign_trained_weights_to_unchanged_layers()
-#     self.assign_trained_weights_to_separable_layers()  
-# #     show_all_variables(True, self._net_sep.get_scope())
     
   def _init_resnet(self):
       self._net_sep = resnetv1_pluri(batch_size=1, num_layers=101, base_weights_dict=self._base_weights_dict, 

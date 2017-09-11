@@ -29,7 +29,7 @@ from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import layers
 from model.config import cfg
 from tensorflow.contrib.layers.python.layers import utils
-from davelib.utils import remove_net_suffix
+from davelib.utils import remove_net_suffix, timer
 
 
 def resnet_arg_scope(is_training=True,
@@ -111,6 +111,7 @@ class resnetv1(Network):
       utils.collect_named_outputs(self._end_points_collection, self._resnet_scope+'/conv1', 
                                   net)
       
+
       net = tf.pad(net, [[0, 0], [1, 1], [1, 1], [0, 0]])
       net = slim.max_pool2d(net, [3, 3], stride=2, padding='VALID', scope='pool1')
 
@@ -332,17 +333,17 @@ class resnetv1(Network):
         sess.run(tf.assign(self._variables_to_fix[self._resnet_scope + '/conv1/weights:0'], 
                            tf.reverse(conv1_rgb, [2])))
         
-  def get_outputs_multi_image(self, blobs_list, output_layers, sess):
+  def get_outputs_multi_image(self, blobs_list, output_layers, sess, collect_metadata=True):
     outputs_list = []
     run_metadata_list = []
     
     for blobs in blobs_list:
-      outputs, run_metadata = self.get_outputs(blobs, output_layers, sess)
+      outputs, run_metadata = self.get_outputs(blobs, output_layers, sess, collect_metadata)
       outputs_list.append(outputs)
       run_metadata_list.append(run_metadata)
     return outputs_list, run_metadata_list
 
-  def get_outputs(self, blobs, output_layers, sess):
+  def get_outputs(self, blobs, output_layers, sess, collect_metadata=True):
     feed_dict = {self._image: blobs['data'],
                  self._im_info: blobs['im_info'],
                  self._gt_boxes: np.zeros((10,5))}
@@ -358,9 +359,14 @@ class resnetv1(Network):
               fetches[output_layer] = tensor
               
     # Run the graph with full trace option
-    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    run_metadata = tf.RunMetadata()
-    outputs = sess.run(fetches, feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
+    with timer('sess.run'):
+      if collect_metadata:
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        outputs = sess.run(fetches, feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
+      else:
+        run_metadata = None
+        outputs = sess.run(fetches, feed_dict=feed_dict)
     
     # Create the Timeline object, and write it to a json
 #     tl = timeline.Timeline(run_metadata.step_stats)

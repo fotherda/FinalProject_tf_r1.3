@@ -32,7 +32,7 @@ from nets.resnet_v1 import resnet_arg_scope
 from davelib.layer_name import LayerName
 
 
-def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
+def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None, pad_name=None):
   """Strided 2-D convolution with 'SAME' padding.
 
   When stride > 1, then we do explicit zero-padding, followed by conv2d with
@@ -68,7 +68,7 @@ def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
     output: A 4-D tensor of size [batch, height_out, width_out, channels] with
       the convolution output.
   """
-  if stride == 1:
+  if stride == [1,1]:
     return layers_lib.conv2d(
         inputs,
         num_outputs,
@@ -86,7 +86,8 @@ def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
       pad_beg[i] = pad_total // 2
       pad_end[i] = pad_total - pad_beg[i]
     inputs = array_ops.pad(
-        inputs, [[0, 0], [pad_beg[0], pad_end[0]], [pad_beg[1], pad_end[1]], [0, 0]])
+        inputs, [[0, 0], [pad_beg[0], pad_end[0]], [pad_beg[1], pad_end[1]], [0, 0]], 
+        name=pad_name)
     return layers_lib.conv2d(
         inputs,
         num_outputs,
@@ -96,13 +97,13 @@ def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
         padding='VALID',
         scope=scope)
 
-
+    
 class resnetv1_sep(resnetv1):
     
   def __init__(self, batch_size, num_layers, base_weights_dict, net_desc):
     resnetv1.__init__(self, batch_size, num_layers)
-    self._resnet_scope = 'resnet_v1_sep_%d' % (num_layers)  
-#     self._resnet_scope = 'resnet_v1_sep%d_%d' % (scope_idx, num_layers)  
+    self._resnet_scope = 'resnet_v1_%d' % (num_layers)  
+#     self._resnet_scope = 'resnet_v1_sep_%d' % (num_layers)  
     self._base_weights_dict = base_weights_dict
     self._net_desc = net_desc
     self.bottleneck_func = self.bottleneck
@@ -216,11 +217,11 @@ class resnetv1_sep(resnetv1):
       K = self._net_desc[full_layer_name]
       layer1_name = LayerName(layer_name + '_sep')
       net = conv2d_same(inputs, K[0], kernel_size=(kernel_size,1), stride=[stride,1],
-                         scope=layer1_name)
+                         scope=layer1_name, pad_name='Pad_sep1')
     
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
       net = conv2d_same(net, num_output_channels, kernel_size=(1,kernel_size), 
-                        stride=[1,stride], scope=layer_name)
+                        stride=[1,stride], scope=layer_name, pad_name='Pad_sep2')
     return net
     
   def rpn_convolution(self, net_conv4, is_training, initializer):
@@ -292,7 +293,7 @@ class resnetv1_sep(resnetv1):
   
         end_points_collection = self._resnet_scope + '_end_points'
         utils.collect_named_outputs(end_points_collection, self._resnet_scope+'/conv1', net)        
-        net = tf.pad(net, [[0, 0], [1, 1], [1, 1], [0, 0]])
+        net = tf.pad(net, [[0, 0], [1, 1], [1, 1], [0, 0]], name='Pad_1')
         net = slim.max_pool2d(net, [3, 3], stride=2, padding='VALID', scope='pool1')
     else:
       net = super(resnetv1_sep, self).build_base()

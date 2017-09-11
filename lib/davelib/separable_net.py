@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import datetime
 import os.path
+import pickle as pi
 
 from model.config import cfg
 from davelib.resnet_v1_sep import resnetv1_sep
@@ -15,7 +16,7 @@ from davelib.layer_name import LayerName
 from tensorflow.python.framework import ops
 from collections import OrderedDict
 from davelib.profile_stats import ProfileStats
-from davelib.utils import show_all_variables, stdout_redirector, run_test_metric
+from davelib.utils import show_all_variables, show_all_nodes, stdout_redirector, run_test_metric, timer
 from utils.timer import Timer
 
 
@@ -94,9 +95,12 @@ class SeparableNet(object):
     self._sess = sess
     self._saved_model_path = saved_model_path
     self._base_variables = base_variables
+#     show_all_nodes(True)
     self._init_resnet()
     self._net_sep.create_architecture(self._sess, "TEST", 21, tag='default', anchor_scales=[8, 16, 32])
-    
+  
+#     show_all_nodes(True)
+  
     restore = False
     if filename:
       save_dir = saved_model_path[:saved_model_path.rfind('/')+1]
@@ -114,6 +118,7 @@ class SeparableNet(object):
 #       show_all_variables(True, self._net_sep.get_scope())
       print('Net restore from file took: {:.3f}s' .format( _t.diff))
     else:    
+#       show_all_variables(True)
       self._assign_weights()
 
     if filename and not restore: #save this model with it's variables and weights
@@ -130,7 +135,7 @@ class SeparableNet(object):
     self._assign_trained_weights_to_unchanged_layers()
     self._assign_trained_weights_to_separable_layers()  
     _t.toc()
-    print('PluripotentNet init took: {:.3f}s' .format( _t.diff))
+    print('{} init took: {:.3f}s'.format(self.__class__.__name__, _t.diff))
 
     
   def _assign_trained_weights_to_unchanged_layers(self):
@@ -154,7 +159,7 @@ class SeparableNet(object):
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
       for layer_name in self._net_desc:
         source_weights = self._base_weights_dict[layer_name]
-        layer1_name = LayerName(layer_name +'_sep/weights','layer_weights')
+        layer1_name = LayerName(layer_name +'_sep/weights')
         dest_weights_1 = tf.get_variable(layer1_name.layer_weights())
         dest_weights_2 = tf.get_variable(layer_name.layer_weights())
         K = (self._net_desc[layer_name])[0]
@@ -163,8 +168,10 @@ class SeparableNet(object):
           
       self._sess.run(all_ops)
 
+
+
   def _get_assign_ops(self, source_weights, dest_weights_1, dest_weights_2, K, plot=False):
-    if plot :
+    def plot_kernels():
       f_norms = np.empty(K+1)
       plots_dict = OrderedDict()
       Ks = [21,5,2,1]
@@ -173,7 +180,8 @@ class SeparableNet(object):
         f_norms[k], plots = check_reconstruction_error(V, H, source_weights, k)
         plots_dict[k] = plots
       plot_filters(plots_dict, 4)
-    else:
+      
+    def calc_weights():
       if len(source_weights.shape) == 4: #convolutional layer
         H,W,C,N = tuple(source_weights.shape)
         if H==1 and W==1: #1x1 conv layer
@@ -186,6 +194,26 @@ class SeparableNet(object):
           M2 = np.expand_dims(M2, axis=0)
       elif len(source_weights.shape) == 2: #fc layer
         M1, M2 = self._get_low_rank_weights_for_fc_layer(source_weights, K)
+      return M1,M2
+      
+    if plot:
+      plot_kernels() 
+      return None
+      
+    #this is the logic to persist the SVD compressed weights so don't have to do the
+    #costly recompute 
+    save_dir = self._saved_model_path[:self._saved_model_path.rfind('/')+1] + 'weights/'
+    save_file = save_dir + dest_weights_2.name.replace('/','|').replace(':','_')
+
+    if os.path.isfile(save_file): #restore from file
+      _t = Timer()
+      _t.tic()
+      M1, M2 = pi.load( open( save_file, "rb" ) )
+      _t.toc()
+      print('Net restore from file took: {:.3f}s' .format( _t.diff))
+    else: #calc and then save
+      M1,M2 = calc_weights()  
+      pi.dump( (M1,M2), open( save_file, "wb" ) )
         
     assign_op_1 = tf.assign(dest_weights_1, M1)
     assign_op_2 = tf.assign(dest_weights_2, M2)
@@ -204,7 +232,8 @@ class SeparableNet(object):
 
     if base_outputs_list is None:
       base_outputs_list = self._base_net.get_outputs_multi_image(blobs_list, output_layers, sess)
-    sep_outputs_list, run_metadata_list = self._net_sep.get_outputs_multi_image(blobs_list, output_layers, sess)
+    sep_outputs_list, run_metadata_list = self._net_sep.get_outputs_multi_image(blobs_list, 
+                                  output_layers, sess, collect_metadata=run_profile_stats)
 
     for name in output_layers: # probably cls_score and bbox_pred - the 2 final layers
       diffs_cat = None
@@ -255,7 +284,6 @@ class SeparableNet(object):
         print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
 #     else:
 #       print('diff_mean_abs=%f'%diff_mean_abs)
-      
     if run_profile_stats:
       profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph(), net_desc)
       compression_stats.set_profile_stats(net_desc, profile_stats, base_profile_stats)

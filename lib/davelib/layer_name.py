@@ -5,6 +5,8 @@ Created on 10 Jul 2017
 '''
 from functools import total_ordering
 from collections import OrderedDict
+from symbol import except_clause
+
 
 @total_ordering
 class LayerName(str):
@@ -31,6 +33,34 @@ class LayerName(str):
 
   def net_layer_weights(self, net):
     return net + '/' + self.layer_weights()
+      
+  def block(self):
+    idx = self.find('block')
+    if idx == -1:
+      return None
+    else:
+      return int(self[idx+5])
+      
+  def unit(self):
+    idx = self.find('unit_')
+    if idx == -1:
+      return None
+    else:
+      end = self.find('/', idx)
+      return int(self[idx+5:end])
+      
+  def conv(self):
+    idx = self.find('conv1')
+    if idx != -1:
+      return 1
+    idx = self.find('conv2')
+    if idx != -1:
+      return 2
+    idx = self.find('conv3')
+    if idx != -1:
+      return 3
+    return None
+      
       
   def net_layer(self, net):
     return net + '/' + self
@@ -201,4 +231,188 @@ def remove_bottleneck_not_unit1(layer_names):
 def remove_layers_after_block3(layer_names):  
   filtered = [ v for v in layer_names[:] if 'block4' not in v and 'rpn_conv' not in v ]
   return filtered
+
+__ORDERED_LAYERS__ = [
+  'Placeholder', #image
+  'Placeholder_1', #image_info
+  'Placeholder_2', #gt_boxes
+  'Pad',
+  'conv1',
+  'Pad_1',
+  'pool1',
+  
+  'block1/unit_1/bottleneck_v1/shortcut',
+  'block1/unit_1/bottleneck_v1/conv1',
+  'block1/unit_1/bottleneck_v1/conv2',
+  'block1/unit_1/bottleneck_v1/conv3',
+  'block1/unit_1/bottleneck_v1',
+  'block1/unit_2/bottleneck_v1/conv1',
+  'block1/unit_2/bottleneck_v1/conv2',
+  'block1/unit_2/bottleneck_v1/conv3',
+  'block1/unit_2/bottleneck_v1',
+  'block1/unit_3/bottleneck_v1/conv1',
+  'block1/unit_3/bottleneck_v1/conv2',
+  'block1/unit_3/bottleneck_v1/conv3',
+  'block1/unit_3/bottleneck_v1',
+  'block1/unit_3/bottleneck_v1/shortcut',
+
+  'block2/unit_1/bottleneck_v1/shortcut',
+  'block2/unit_1/bottleneck_v1/conv1',
+  'block2/unit_1/bottleneck_v1/conv2',
+  'block2/unit_1/bottleneck_v1/conv3',
+  'block2/unit_1/bottleneck_v1',
+  'block2/unit_2/bottleneck_v1/conv1',
+  'block2/unit_2/bottleneck_v1/conv2',
+  'block2/unit_2/bottleneck_v1/conv3',
+  'block2/unit_2/bottleneck_v1',
+  'block2/unit_3/bottleneck_v1/conv1',
+  'block2/unit_3/bottleneck_v1/conv2',
+  'block2/unit_3/bottleneck_v1/conv3',
+  'block2/unit_3/bottleneck_v1',
+  'block2/unit_4/bottleneck_v1/conv1',
+  'block2/unit_4/bottleneck_v1/conv2',
+  'block2/unit_4/bottleneck_v1/conv3',
+  'block2/unit_4/bottleneck_v1',
+  'block2/unit_4/bottleneck_v1/shortcut',
+  
+  'block3/unit_1/bottleneck_v1/shortcut',
+  'block3/unit_1/bottleneck_v1/conv1',
+  'block3/unit_1/bottleneck_v1/conv2',
+  'block3/unit_1/bottleneck_v1/conv3',
+  'block3/unit_1/bottleneck_v1',
+  'block3/unit_2/bottleneck_v1/conv1',
+  'block3/unit_2/bottleneck_v1/conv2',
+  'block3/unit_2/bottleneck_v1/conv3',
+  'block3/unit_2/bottleneck_v1',
+  'block3/unit_3/bottleneck_v1/conv1',
+  'block3/unit_3/bottleneck_v1/conv2',
+  'block3/unit_3/bottleneck_v1/conv3',
+  'block3/unit_3/bottleneck_v1',
+  'block3/unit_4/bottleneck_v1/conv1',
+  'block3/unit_4/bottleneck_v1/conv2',
+  'block3/unit_4/bottleneck_v1/conv3',
+  'block3/unit_4/bottleneck_v1',
+  'block3/unit_5/bottleneck_v1/conv1',
+  'block3/unit_5/bottleneck_v1/conv2',
+  'block3/unit_5/bottleneck_v1/conv3',
+  'block3/unit_5/bottleneck_v1',
+  'block3/unit_6/bottleneck_v1/conv1',
+  'block3/unit_6/bottleneck_v1/conv2',
+  'block3/unit_6/bottleneck_v1/conv3',
+  'block3/unit_6/bottleneck_v1',
+  'block3/unit_7/bottleneck_v1/conv1',
+  'block3/unit_7/bottleneck_v1/conv2',
+  'block3/unit_7/bottleneck_v1/conv3',
+  'block3/unit_7/bottleneck_v1',
+  'block3/unit_8/bottleneck_v1/conv1',
+  'block3/unit_8/bottleneck_v1/conv2',
+  'block3/unit_8/bottleneck_v1/conv3',
+  'block3/unit_8/bottleneck_v1',
+  'block3/unit_9/bottleneck_v1/conv1',
+  'block3/unit_9/bottleneck_v1/conv2',
+  'block3/unit_9/bottleneck_v1/conv3',
+  'block3/unit_9/bottleneck_v1',
+  'block3/unit_10/bottleneck_v1/conv1',
+  'block3/unit_10/bottleneck_v1/conv2',
+  'block3/unit_10/bottleneck_v1/conv3',
+  'block3/unit_10/bottleneck_v1',
+  'block3/unit_11/bottleneck_v1/conv1',
+  'block3/unit_11/bottleneck_v1/conv2',
+  'block3/unit_11/bottleneck_v1/conv3',
+  'block3/unit_11/bottleneck_v1',
+  'block3/unit_12/bottleneck_v1/conv1',
+  'block3/unit_12/bottleneck_v1/conv2',
+  'block3/unit_12/bottleneck_v1/conv3',
+  'block3/unit_12/bottleneck_v1',
+  'block3/unit_13/bottleneck_v1/conv1',
+  'block3/unit_13/bottleneck_v1/conv2',
+  'block3/unit_13/bottleneck_v1/conv3',
+  'block3/unit_13/bottleneck_v1',
+  'block3/unit_14/bottleneck_v1/conv1',
+  'block3/unit_14/bottleneck_v1/conv2',
+  'block3/unit_14/bottleneck_v1/conv3',
+  'block3/unit_14/bottleneck_v1',
+  'block3/unit_15/bottleneck_v1/conv1',
+  'block3/unit_15/bottleneck_v1/conv2',
+  'block3/unit_15/bottleneck_v1/conv3',
+  'block3/unit_15/bottleneck_v1',
+  'block3/unit_16/bottleneck_v1/conv1',
+  'block3/unit_16/bottleneck_v1/conv2',
+  'block3/unit_16/bottleneck_v1/conv3',
+  'block3/unit_16/bottleneck_v1',
+  'block3/unit_17/bottleneck_v1/conv1',
+  'block3/unit_17/bottleneck_v1/conv2',
+  'block3/unit_17/bottleneck_v1/conv3',
+  'block3/unit_17/bottleneck_v1',
+  'block3/unit_18/bottleneck_v1/conv1',
+  'block3/unit_18/bottleneck_v1/conv2',
+  'block3/unit_18/bottleneck_v1/conv3',
+  'block3/unit_18/bottleneck_v1',
+  'block3/unit_19/bottleneck_v1/conv1',
+  'block3/unit_19/bottleneck_v1/conv2',
+  'block3/unit_19/bottleneck_v1/conv3',
+  'block3/unit_19/bottleneck_v1',
+  'block3/unit_20/bottleneck_v1/conv1',
+  'block3/unit_20/bottleneck_v1/conv2',
+  'block3/unit_20/bottleneck_v1/conv3',
+  'block3/unit_20/bottleneck_v1',
+  'block3/unit_21/bottleneck_v1/conv1',
+  'block3/unit_21/bottleneck_v1/conv2',
+  'block3/unit_21/bottleneck_v1/conv3',
+  'block3/unit_21/bottleneck_v1',
+  'block3/unit_22/bottleneck_v1/conv1',
+  'block3/unit_22/bottleneck_v1/conv2',
+  'block3/unit_22/bottleneck_v1/conv3',
+  'block3/unit_22/bottleneck_v1',
+  'block3/unit_23/bottleneck_v1/conv1',
+  'block3/unit_23/bottleneck_v1/conv2',
+  'block3/unit_23/bottleneck_v1/conv3',
+  'block3/unit_23/bottleneck_v1',
+
+  'ANCHOR_default',
+  'rpn_conv/3x3',
+  'rpn_cls_score',
+  'rpn_cls_prob',
+  'rpn_bbox_pred',
+  'rois',
+  'anchor',
+  'rpn_rois',
+  'pool5',
+
+  'block4/unit_1/bottleneck_v1/shortcut',
+  'block4/unit_1/bottleneck_v1/conv1',
+  'block4/unit_1/bottleneck_v1/conv2',
+  'block4/unit_1/bottleneck_v1/conv3',
+  'block4/unit_1/bottleneck_v1',
+  'block4/unit_2/bottleneck_v1/conv1',
+  'block4/unit_2/bottleneck_v1/conv2',
+  'block4/unit_2/bottleneck_v1/conv3',
+  'block4/unit_2/bottleneck_v1',
+  'block4/unit_3/bottleneck_v1/conv1',
+  'block4/unit_3/bottleneck_v1/conv2',
+  'block4/unit_3/bottleneck_v1/conv3',
+  'block4/unit_3/bottleneck_v1',
+
+  'cls_score',
+  'cls_prob',
+  'bbox_pred',
+]
+
+ordered_layers = __ORDERED_LAYERS__
+
+
+def sort_func(layer):
+  try:
+    idx = ordered_layers.index(layer)
+    return idx
+  except ValueError:
+    print(layer + ' not in list')
+    return len(ordered_layers) 
+  
+#   for i, ol in enumerate(ordered_layers):
+#     if layer in ol
+  
+  
+  
+  
 
