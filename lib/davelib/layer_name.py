@@ -120,6 +120,14 @@ class LayerName(str):
     return K  
     
     
+    
+def compress_label(layer):  
+#   idx = layer.find('/')
+#   if idx != -1:
+#     layer = layer[idx+1:]
+  return layer.replace('bottelneck_v1/','').replace('unit_','u ')  
+    
+    
 __COMPRESSIBLE_LAYERS__ = None
 
 
@@ -192,6 +200,17 @@ def keep_only_conv_not_1x1(layer_names):
     elif 'conv2' in v:
       filtered.append(v)
     elif 'rpn' in v:
+      filtered.append(v)
+  return filtered
+
+def remove_all_conv_1x1(layer_names):  
+  filtered = []
+  for v in layer_names:
+    if 'block' not in v and 'conv1' in v:
+      filtered.append(v)
+    elif 'conv2' in v:
+      filtered.append(v)
+    elif 'rpn' in v or 'cls_score' in v or 'bbox_pred' in v:
       filtered.append(v)
   return filtered
 

@@ -184,7 +184,7 @@ class resnetv1_sep(resnetv1):
       return utils.collect_named_outputs(outputs_collections, sc.name, output)
 
   def separate_1x1_conv_layer(self, inputs, num_outputs, stride, layer_name, scope):
-    int_scope = scope + '_sep'
+#     int_scope = scope + '_sep'
     with arg_scope(
       [layers.conv2d],
       trainable=False,
@@ -194,12 +194,14 @@ class resnetv1_sep(resnetv1):
       biases_regularizer=None): #make first layer clean, no BN no biases no activation func
 
       K = self._net_desc[layer_name]
-      intermediate = layers.conv2d(inputs, K[0], [1, 1], stride=1, scope=int_scope)
+      layer1_name = LayerName(scope + '_sep_K'+str(K))
+      intermediate = layers.conv2d(inputs, K[0], [1, 1], stride=1, scope=layer1_name)
      
+      layer2_name = LayerName(scope + '_K'+str(K))
     with arg_scope(
       [layers.conv2d],
       trainable=False): #make second layer with BN but with no biases
-      net = layers.conv2d(intermediate, num_outputs, [1, 1], stride=stride, scope=scope)
+      net = layers.conv2d(intermediate, num_outputs, [1, 1], stride=stride, scope=layer2_name)
     return net
 
   def separate_conv_layer(self, inputs, num_output_channels, kernel_size, stride, rate,
@@ -215,13 +217,14 @@ class resnetv1_sep(resnetv1):
       biases_initializer=None): #make first layer clean, no BN no biases no activation func
 
       K = self._net_desc[full_layer_name]
-      layer1_name = LayerName(layer_name + '_sep')
+      layer1_name = LayerName(layer_name + '_sep_K'+str(K))
       net = conv2d_same(inputs, K[0], kernel_size=(kernel_size,1), stride=[stride,1],
                          scope=layer1_name, pad_name='Pad_sep1')
     
+      layer2_name = LayerName(layer_name + '_K'+str(K))
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
       net = conv2d_same(net, num_output_channels, kernel_size=(1,kernel_size), 
-                        stride=[1,stride], scope=layer_name, pad_name='Pad_sep2')
+                        stride=[1,stride], scope=layer2_name, pad_name='Pad_sep2')
     return net
     
   def rpn_convolution(self, net_conv4, is_training, initializer):
@@ -231,7 +234,7 @@ class resnetv1_sep(resnetv1):
       return super(resnetv1_sep, self).rpn_convolution(net_conv4, is_training, initializer)
 
     K = self._net_desc[layer_name]
-    layer1_name = LayerName(layer_name + '_sep')
+    layer1_name = LayerName(layer_name + '_sep_K'+str(K))
     with arg_scope(
       [slim.conv2d],
       trainable=False,
@@ -243,6 +246,7 @@ class resnetv1_sep(resnetv1):
       net = slim.conv2d(net_conv4, K[0], [3, 1], trainable=is_training, weights_initializer=initializer,
                         scope=layer1_name)
 
+      layer2_name = LayerName(layer_name + '_K'+str(K))
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
       with arg_scope(
         [slim.conv2d],
@@ -250,16 +254,15 @@ class resnetv1_sep(resnetv1):
         normalizer_fn=None,
         normalizer_params=None): #make second layer no BN but with biases
         net = slim.conv2d(net, 512, [1, 3], trainable=is_training, weights_initializer=initializer,
-                          scope=layer_name)
+                          scope=layer2_name)
     return net
 
   def fully_connected(self, input_, num_outputs, is_training, initializer, layer_name):
     if layer_name not in self._net_desc:
       return super(resnetv1_sep, self).fully_connected(input_, num_outputs, is_training, 
                                                        initializer, layer_name)
-
     K = self._net_desc[layer_name]
-    layer1_name = LayerName(layer_name +'_sep')
+    layer1_name = LayerName(layer_name + '_sep_K'+str(K))
     with arg_scope(
       [slim.fully_connected],
       trainable=False,
@@ -271,6 +274,7 @@ class resnetv1_sep(resnetv1):
       net = slim.fully_connected(input_, K[0], weights_initializer=initializer,
                                 trainable=is_training, activation_fn=None, scope=layer1_name)
 
+    layer2_name = LayerName(layer_name + '_K'+str(K))
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
       with arg_scope(
         [slim.fully_connected],
@@ -278,9 +282,9 @@ class resnetv1_sep(resnetv1):
         normalizer_fn=None,
         normalizer_params=None): #make second layer no BN but with biases
         net = slim.fully_connected(net, num_outputs, weights_initializer=initializer,
-                                trainable=is_training, scope=layer_name)
+                                trainable=is_training, scope=layer2_name)
     return net
-
+ 
   
   def build_base(self):
     layer_name = LayerName('conv1')

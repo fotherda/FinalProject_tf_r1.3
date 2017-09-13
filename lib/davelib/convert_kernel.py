@@ -177,7 +177,8 @@ class ExperimentController(TensorFlowTestCase):
     net_desc = CompressedNetDescription(K_by_layer_dict)
     return net_desc
   
-  def _get_next_model(self, layer_K_dict, efficiency_dict, performance_dict):
+  def _get_next_model(self, layer_K_dict, efficiency_dict, performance_dict, 
+                      perf_metric_increases_with_degradation):
     def get_K_old_new(layer):
       def get_next_K(K_old):
         idx = sorted_keys.index( K_old )
@@ -213,8 +214,10 @@ class ExperimentController(TensorFlowTestCase):
         efficiency_delta = efficiency_dict[layer][K_new]
         performance_delta = performance_dict[layer][K_new]
         
-      efficiency_grad = efficiency_delta
-#         objective_grad = efficiency_delta / performance_delta
+#       efficiency_grad = efficiency_delta
+      efficiency_grad = efficiency_delta / performance_delta
+      if not perf_metric_increases_with_degradation:
+        efficiency_grad *= -1.0
       grad_dict[efficiency_grad] = layer 
       perf_delta_dict[layer] = performance_delta
       efficiency_delta_dict[layer] = efficiency_delta
@@ -238,61 +241,78 @@ class ExperimentController(TensorFlowTestCase):
   def optimise_with_plurinet(self, max_iter, stats_file_suffix):
     guide_compression_stats = CompressionStats(filename_suffix=stats_file_suffix, 
                                 load_from_file=True, all_Kmaxs_dict=self._all_Kmaxs_dict)
-     
+
+    guide_compression_stats.add_missing_mAP_deltas( self.get_mAP_base_net([100]) )
+ 
     stats_dict = guide_compression_stats.build_label_layer_K_dict()
-    efficiency_label = 'float_ops_frac_delta'
-#     efficiency_label = 'flops_reduced_frac'
-#     efficiency_label = 'output_bytes_frac_delta'
+#     efficiency_label = 'float_ops_frac_delta'
+    efficiency_label = 'output_bytes_frac_delta'
 #     efficiency_label = 'param_output_bytes_frac_delta'
-    performance_label = 'diff_mean_cls_score'
+    performance_label = 'mAP_10_top150_delta'
+    guide_performance_label = 'mAP_100_top150_delta'
+#     performance_label = 'diff_mean_cls_score'
+    perf_metric_increases_with_degradation = False
 #     performance_label = 'diff_mean_cls_prob'
     
     
-    def remove_all_except_conv2_first_conv1(d):  
-      filtered = {}
-      for k,v in d.items():
-        if 'block' not in k and 'conv1' in k:
-          filtered[k] = v
-        elif 'conv2' in k:
-          filtered[k] = v
-        elif 'rpn' in k:
-          filtered[k] = v
-      return filtered
+#     def remove_all_except_conv2_first_conv1(d):  
+#       filtered = {}
+#       for k,v in d.items():
+#         if 'block' not in k and 'conv1' in k:
+#           filtered[k] = v
+#         elif 'conv2' in k:
+#           filtered[k] = v
+#         elif 'rpn' in k:
+#           filtered[k] = v
+#       return filtered
 
-    
     compressed_layers = get_all_compressible_layers()
-    compressed_layers = keep_only_conv_not_1x1(compressed_layers)
-    comp_layer_label='conv2_rpn'
+    compressed_layers = remove_all_conv_1x1(compressed_layers)
+    comp_layer_label='noconv1x1'
+#     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = [LayerName('conv1')]
 #     comp_layer_label='conv1'
 #     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2')]
 #     comp_layer_label='b4_u3_conv2'
     Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
     Kfracs_label='0.1-1.0'
-#     Kfracs = [0.5,1.0]
-    num_imgs_list=[]
+#     Kfracs = [0.5]
+    num_imgs_list=[10]
+    output_layers = []
+#     output_layers = self._final_layers
     old_performance_metric = 0
-    layer_K_dict = {} 
 
     filename = 'pluri_net_' + Kfracs_label + '_' + comp_layer_label
 
     pluri_net, mAP_base_net = self.init_plurinet(num_imgs_list, compressed_layers, Kfracs, filename)
-#     exit()
     
     efficiency_dict = stats_dict[efficiency_label] #layer->K
-    performance_dict = stats_dict[performance_label]
+    performance_dict = stats_dict[guide_performance_label]
     compression_stats = CompressionStats(load_from_file=False)
  
-    #bbox_pred layer doesn't affect cls_score
-    del efficiency_dict['bbox_pred']
-    efficiency_dict = remove_all_except_conv2_first_conv1(efficiency_dict)
+    efficiency_dict_keys = remove_all_conv_1x1(efficiency_dict.keys())
+    efficiency_dict_keys.remove('bbox_pred') #must remove or it will always 'win' as has no effect on cls_score
+    efficiency_dict = { k: efficiency_dict[k] for k in efficiency_dict_keys }
+#     efficiency_dict = remove_all_except_conv2_first_conv1(efficiency_dict)
+
+    def remove_positive_delta_compressions(efficiency_dict):
+      new_dict = {}
+      for k, d in efficiency_dict.items(): 
+        d2 = {K: val for K, val in d.items() if val<0}
+        if len(d2) > 0:
+          new_dict[k] = d2
+      return new_dict
+
+    efficiency_dict = remove_positive_delta_compressions(efficiency_dict)
     cum_efficiency_delta = 0 
     opt_results = [] 
+    layer_K_dict = {} 
     
     for itern in range(max_iter):#each iteration compresses 1 layer (a bit more)
       print(str(itern+1), end=' ')
       layer_K_dict, expected_perf_delta, expected_efficiency_delta, net_change = \
-                    self._get_next_model(layer_K_dict, efficiency_dict, performance_dict)
+                    self._get_next_model(layer_K_dict, efficiency_dict, performance_dict, 
+                                         perf_metric_increases_with_degradation)
 #     for Kfrac in reversed(Kfracs):
 #       layer_K_dict, expected_perf_delta = self._get_next_Kfrac(Kfrac)
 #       
@@ -300,7 +320,7 @@ class ExperimentController(TensorFlowTestCase):
       pluri_net.set_active_path_through_net(net_desc, self._sess)
       
       pluri_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
-                                     self._final_layers, compression_stats, 
+                                     output_layers, compression_stats, 
                                      self._base_profile_stats, mAP_base_net, num_imgs_list, 
                                      run_profile_stats=False)
 
@@ -313,14 +333,13 @@ class ExperimentController(TensorFlowTestCase):
 
       cum_efficiency_delta += expected_efficiency_delta
       print('\t%s=%f'%(efficiency_label,cum_efficiency_delta))
-#       print('%s: K:%d->%d %s=%f'%(layer_with_min_grad,K_old,K_new,performance_label,new_performance_metric))
       if expected_perf_delta:
         print('\texpected/actual \u0394perf=%.3f / %.3f'%(expected_perf_delta,actual_perf_delta))
       old_performance_metric = new_performance_metric
       
-      pi.dump( opt_results, open( 'opt_results', "wb" ) )
+      pi.dump( opt_results, open( 'opt_results_output_bytes_clsscore', "wb" ) )
 
-    print('Net Description:\n' + str(net_desc))
+    print('Final optimised net description:\n' + str(net_desc))
     
     type_labels = ['float_ops_frac_delta','float_ops_count_delta',
                    'output_bytes_frac_delta','output_bytes_count_delta',
@@ -404,11 +423,12 @@ class ExperimentController(TensorFlowTestCase):
       
     
   def run_exp(self, num_imgs_list):
-#     compressed_layers = get_all_compressible_layers()
+    compressed_layers = get_all_compressible_layers()
+    compressed_layers = remove_all_conv_1x1(compressed_layers)
 #     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = remove_bottleneck_shortcut_layers(compressed_layers)
 #     compressed_layers = remove_bottleneck_not_unit1(compressed_layers)
-    compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2/weights')]
+#     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2/weights')]
 #     compressed_layers = [LayerName('rpn_conv/3x3')]
 #     compressed_layers = [LayerName('conv1/weights')]
 #     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2'), LayerName('rpn_conv/3x3')]
@@ -420,16 +440,16 @@ class ExperimentController(TensorFlowTestCase):
     mAP_base_net = self.get_mAP_base_net(num_imgs_list)    
               
     scope_idx=1
-    for l, layer_name in enumerate(compressed_layers):
-      if l not in layer_idxs:
-        continue
-#       self._compressed_layers = [layer_name]
-      self._compressed_layers = compressed_layers
+    for l, layer_name in enumerate(sorted(compressed_layers)):
+#       if l not in layer_idxs:
+#         continue
+      self._compressed_layers = [layer_name]
+#       self._compressed_layers = compressed_layers
       
-      Kfracs = [0.5]
+#       Kfracs = [0.5]
 #       Kfracs = [0.1,1.0,-1]
 #       Kfracs = np.arange(0.01, 1.0, 0.025)
-#       Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+      Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
 #       Kfracs = [0.32,0.34,0.36,0.38]
 #       Ks = self.get_Ks(layer_name, Kfracs)
 
@@ -453,29 +473,30 @@ class ExperimentController(TensorFlowTestCase):
                                              self._base_profile_stats, mAP_base_net, num_imgs_list)
         else:
 #           show_all_nodes(True)
-          self._sess.close() #restart session# to free memory and to reset profile stats
+          self._sess.close() #restart session to free memory and to reset profile stats
           tf.reset_default_graph()
           self._sess = tf.Session(config=self._tfconfig) 
             
           sep_net = SeparableNet(self._base_net, self._sess, self._saved_model_path, 
                                  self._all_comp_weights_dict, self._comp_bn_vars_dict, 
                                  self._comp_bias_vars_dict, net_desc, self._base_variables)
-              
-          sep_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
+          
+          with timer('run_performance_analysis'):
+            sep_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
                                            self._final_layers, self._compression_stats, 
                                            self._base_profile_stats, mAP_base_net, 
                                            num_imgs_list)
-#         exit()
-        self._compression_stats.save('0.1-1.0')
+        self._compression_stats.save('no1x1conv_0.1-1.0')
         print(layer_name + ' Kfrac=' + str(Kfrac) + ' complete')
         scope_idx += 1
-#         show_all_variables(True, sep_net._net_sep.get_scope())
 
 
 def pre_tasks():
   return
 
-  plot_results_from_file('opt_results')
+  plot_results_from_file('opt_path_flops_eff_perf')
+#   plot_results_from_file('opt_results_output_bytes_clsscore')
+  exit()
 
 #   print_for_latex()
 #   layers = get_all_compressible_layers()
@@ -593,7 +614,6 @@ def pre_tasks():
   exit()
    
 def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
-#   show_all_variables(show=True)
   
   exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '16')
 #   exp_controller.run_exp(num_imgs_list=[])
@@ -601,7 +621,8 @@ def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)
 #   exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='allLayersKfrac1.0')
-  exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='allLayersKfrac0.1_1.0')
+  exp_controller.optimise_with_plurinet(max_iter=10,stats_file_suffix='allLayersKfrac0.1_1.0')
+#   exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='no1x1conv_0.1-1.0')
   
 
     #do the plotting      
@@ -622,4 +643,5 @@ def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
 #   float_ops_frac_delta=-0.237753
 #   expected/actual Δperf=0.041 / 0.025
 # Net Description:
-# {'block4/unit_1/bottleneck_v1/conv2': [76], 'block4/unit_3/bottleneck_v1/conv2': [76], 'block4/unit_2/bottleneck_v1/conv2': [230]}
+# {'block4/unit_1/bottleneck_v1/conv2': [76], 'block4/unit_3/bottleneck_v1/conv2': [76], 
+#'block4/unit_2/bottleneck_v1/conv2': [230]}

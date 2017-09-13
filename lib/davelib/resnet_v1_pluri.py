@@ -38,12 +38,6 @@ class resnetv1_pluri(resnetv1_sep):
     
   def __init__(self, batch_size, num_layers, base_weights_dict, net_desc, sess=None):
     resnetv1_sep.__init__(self, batch_size, num_layers, base_weights_dict, net_desc)
-#     self._resnet_scope = 'resnet_v1_sep_%d' % (num_layers)  
-# #     self._resnet_scope = 'resnet_v1_sep%d_%d' % (scope_idx, num_layers)  
-#     self._base_weights_dict = base_weights_dict
-#     self._net_desc = net_desc
-#     self.bottleneck_func = self.bottleneck
-#     self._end_points_collection = self._resnet_scope + '_end_points'
     self._sess = sess
     self._K_by_layer_table = tf.contrib.lookup.MutableHashTable(key_dtype=tf.string,
                                            value_dtype=tf.int64, default_value=-1)
@@ -149,7 +143,6 @@ class resnetv1_pluri(resnetv1_sep):
       return net
 
     def build_layer(K):
-#       nonlocal net_conv4, is_training, initializer, layer_name
       with arg_scope(
         [slim.conv2d],
         trainable=False,
@@ -172,8 +165,6 @@ class resnetv1_pluri(resnetv1_sep):
           net = slim.conv2d(net, 512, [1, 3], trainable=is_training, weights_initializer=initializer,
                             scope=layer2_name)
       return net
-
-
     
     K_active = self._K_by_layer_table.lookup( tf.constant(layer_name, dtype=tf.string) )
     case_dict = {}    
@@ -184,7 +175,54 @@ class resnetv1_pluri(resnetv1_sep):
     
     return tf.case(case_dict, default=uncompressed_func, exclusive=True)
   
+  def fully_connected(self, input_, num_outputs, is_training, initializer, layer_name):
+    uncompressed_net = None
+    
+    def uncompressed_func():
+      nonlocal uncompressed_net
+      if uncompressed_net is None:#need this as irritatingly the tf.case() calls it twice
+        uncompressed_net = super(resnetv1_sep, self).fully_connected(input_, num_outputs, 
+                                                      is_training, initializer, layer_name)
+      return uncompressed_net
+
+    if layer_name not in self._net_desc:
+      net = uncompressed_func()
+      return net
+
+    def build_layer(K):
+      with arg_scope(
+        [slim.fully_connected],
+        trainable=False,
+        normalizer_fn=None,
+        normalizer_params=None,
+        biases_initializer=None,
+        biases_regularizer=None): #make first layer clean, no BN no biases no activation func
+       
+        layer1_name = LayerName(layer_name + '_sep_K'+str(K))
+        net = slim.fully_connected(input_, K, weights_initializer=initializer,
+                                  trainable=is_training, activation_fn=None, scope=layer1_name)
   
+        layer2_name = LayerName(layer_name + '_K'+str(K))
+      with slim.arg_scope(resnet_arg_scope(is_training=False)):
+        with arg_scope(
+          [slim.fully_connected],
+          trainable=False,
+          normalizer_fn=None,
+          normalizer_params=None): #make second layer no BN but with biases
+          net = slim.fully_connected(net, num_outputs, weights_initializer=initializer,
+                                  trainable=is_training, scope=layer2_name)
+        return net
+    
+    K_active = self._K_by_layer_table.lookup( tf.constant(layer_name, dtype=tf.string) )
+    case_dict = {}    
+    Ks = self._net_desc[layer_name]
+    for K in Ks:
+      match_cond = tf.equal(K_active, tf.constant(K, dtype=tf.int64))
+      case_dict[match_cond] = lambda K_=K: build_layer(K_)
+    
+    return tf.case(case_dict, default=uncompressed_func, exclusive=True)
+
+       
   def separate_conv_layer(self, inputs, num_output_channels, kernel_size, stride, rate,
                           layer_name, full_layer_name):
     def build_layer(K):
@@ -282,66 +320,4 @@ class resnetv1_pluri(resnetv1_sep):
                                                     feed_dict=feed_dict)
     return cls_score, cls_prob, bbox_pred, rois
     
-#   def get_outputs_multi_image(self, blobs_list, output_layers, sess):
-#     outputs_list = []
-#     run_metadata_list = []
-#     
-#     for blobs in blobs_list:
-#       outputs, run_metadata = self.get_outputs(blobs, output_layers, sess)
-#       outputs_list.append(outputs)
-#       run_metadata_list.append(run_metadata)
-#     return outputs_list, run_metadata_list
-
-
-#   def get_outputs(self, blobs, output_layers, sess):
-# #     output_layers.append(LayerName('conv1'))
-# #     layer = LayerName('block4/unit_3/bottleneck_v1/conv2')
-# #     layer = LayerName('rpn_conv/3x3')
-#      
-#     feed_dict = {self._image: blobs['data'],
-#                  self._im_info: blobs['im_info'],
-#                  self._gt_boxes: np.zeros((10,5))}
-#     fetches = {}
-#     
-#     for collection_name in ops.get_all_collection_keys():
-#       if self._resnet_scope in collection_name:
-#         collection_dict = utils.convert_collection_to_dict(collection_name)
-#         for alias, tensor in collection_dict.items():
-#           alias = remove_net_suffix(alias, self._resnet_scope)
-#           for output_layer in output_layers:
-#             if output_layer.net_layer(self._resnet_scope) in alias:
-#               fetches[output_layer] = tensor
-#               
-#     # Run the graph with full trace option
-#     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-#     run_metadata = tf.RunMetadata()
-#     outputs = sess.run(fetches, feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
-#     return outputs, run_metadata  
       
-  def fully_connected(self, input_, num_outputs, is_training, initializer, layer_name):
-    if layer_name not in self._net_desc:
-      return super(resnetv1_sep, self).fully_connected(input_, num_outputs, is_training, 
-                                                       initializer, layer_name)
-    K = self._net_desc[layer_name]
-    layer1_name = LayerName(layer_name +'_sep')
-    with arg_scope(
-      [slim.fully_connected],
-      trainable=False,
-      normalizer_fn=None,
-      normalizer_params=None,
-      biases_initializer=None,
-      biases_regularizer=None): #make first layer clean, no BN no biases no activation func
-     
-      net = slim.fully_connected(input_, K[0], weights_initializer=initializer,
-                                trainable=is_training, activation_fn=None, scope=layer1_name)
-
-    with slim.arg_scope(resnet_arg_scope(is_training=False)):
-      with arg_scope(
-        [slim.fully_connected],
-        trainable=False,
-        normalizer_fn=None,
-        normalizer_params=None): #make second layer no BN but with biases
-        net = slim.fully_connected(net, num_outputs, weights_initializer=initializer,
-                                trainable=is_training, scope=layer_name)
-    return net
- 

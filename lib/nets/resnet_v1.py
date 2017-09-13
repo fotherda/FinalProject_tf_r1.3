@@ -359,14 +359,13 @@ class resnetv1(Network):
               fetches[output_layer] = tensor
               
     # Run the graph with full trace option
-    with timer('sess.run'):
-      if collect_metadata:
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        run_metadata = tf.RunMetadata()
-        outputs = sess.run(fetches, feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
-      else:
-        run_metadata = None
-        outputs = sess.run(fetches, feed_dict=feed_dict)
+    if collect_metadata:
+      run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      run_metadata = tf.RunMetadata()
+      outputs = sess.run(fetches, feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
+    else:
+      run_metadata = None
+      outputs = sess.run(fetches, feed_dict=feed_dict)
     
     # Create the Timeline object, and write it to a json
 #     tl = timeline.Timeline(run_metadata.step_stats)

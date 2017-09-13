@@ -97,7 +97,8 @@ class SeparableNet(object):
     self._base_variables = base_variables
 #     show_all_nodes(True)
     self._init_resnet()
-    self._net_sep.create_architecture(self._sess, "TEST", 21, tag='default', anchor_scales=[8, 16, 32])
+    with timer('net_sep.create_architecture'):
+      self._net_sep.create_architecture(self._sess, "TEST", 21, tag='default', anchor_scales=[8, 16, 32])
   
 #     show_all_nodes(True)
   
@@ -110,13 +111,10 @@ class SeparableNet(object):
         restore = True
 
     if restore:
-      _t = Timer()
-      _t.tic()
-      saver = tf.train.Saver()
-      saver.restore(sess,tf.train.latest_checkpoint(save_dir))
-      _t.toc()
+      with timer('Net restore from file'):
+        saver = tf.train.Saver()
+        saver.restore(sess,tf.train.latest_checkpoint(save_dir))
 #       show_all_variables(True, self._net_sep.get_scope())
-      print('Net restore from file took: {:.3f}s' .format( _t.diff))
     else:    
 #       show_all_variables(True)
       self._assign_weights()
@@ -201,9 +199,9 @@ class SeparableNet(object):
       return None
       
     #this is the logic to persist the SVD compressed weights so don't have to do the
-    #costly recompute 
+    #costly recompute every time
     save_dir = self._saved_model_path[:self._saved_model_path.rfind('/')+1] + 'weights/'
-    save_file = save_dir + dest_weights_2.name.replace('/','|').replace(':','_')
+    save_file = save_dir + dest_weights_2.name.replace('/','|').replace(':','_') + '_K'+str(K)
 
     if os.path.isfile(save_file): #restore from file
       _t = Timer()
@@ -281,7 +279,8 @@ class SeparableNet(object):
         compression_stats.set(net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP)
         compression_stats.set(net_desc, 'mAP_%d_top%d_delta'%
                               (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N), mAP - mAP_base_net)
-        print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
+        print('mAP=%f'%(mAP))
+#         print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
 #     else:
 #       print('diff_mean_abs=%f'%diff_mean_abs)
     if run_profile_stats:

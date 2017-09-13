@@ -125,10 +125,18 @@ class CompressionStats(object):
         str_list.append(type_label + '\t' + str(value) + '\n')
     return ''.join(str_list)
   
+  def add_missing_mAP_deltas(self, mAP_base_net):
+    for data_dict in self._stats.values():
+      mAPs = {k: v for k, v in data_dict.items() if 'mAP' in k and '_delta' not in k}
+      if len(mAPs) != 1:
+        raise ValueError('should only be one mAP value per net')
+      for k, value in mAPs.items():
+        data_dict[k+'_delta'] = value - mAP_base_net
+        
   def convert_old_names_to_new(self):
     for data_dict in self._stats.values():
       for old_label, value in data_dict.copy().items():
-        new_label = old_label.replace('flops','float_ops') 
+        new_label = old_label.replace('flops','float_ops').replace('total_bytes','output_bytes') 
         data_dict[new_label] = value
         
   def print_Kfracs(self):
@@ -218,7 +226,10 @@ class CompressionStats(object):
 #       K = net_desc[layer]
       for layer, K in net_desc.items():
         for type_label, value in d.items():
-          new_dict[type_label][layer][K] = value
+          if type(K) is list: 
+            new_dict[type_label][layer][K[0]] = value
+          else:
+            new_dict[type_label][layer][K] = value
     return new_dict
   
 
