@@ -105,7 +105,7 @@ class resnetv1_sep(resnetv1):
     self._resnet_scope = 'resnet_v1_%d' % (num_layers)  
 #     self._resnet_scope = 'resnet_v1_sep_%d' % (num_layers)  
     self._base_weights_dict = base_weights_dict
-    self._net_desc = net_desc
+    self._net_desc = net_desc #can be CompressedNetDescription or PluriNetDescription
     self.bottleneck_func = self.bottleneck
     self._end_points_collection = self._resnet_scope + '_end_points'
 
@@ -195,7 +195,7 @@ class resnetv1_sep(resnetv1):
 
       K = self._net_desc[layer_name]
       layer1_name = LayerName(scope + '_sep_K'+str(K))
-      intermediate = layers.conv2d(inputs, K[0], [1, 1], stride=1, scope=layer1_name)
+      intermediate = layers.conv2d(inputs, K, [1, 1], stride=1, scope=layer1_name)
      
       layer2_name = LayerName(scope + '_K'+str(K))
     with arg_scope(
@@ -218,7 +218,7 @@ class resnetv1_sep(resnetv1):
 
       K = self._net_desc[full_layer_name]
       layer1_name = LayerName(layer_name + '_sep_K'+str(K))
-      net = conv2d_same(inputs, K[0], kernel_size=(kernel_size,1), stride=[stride,1],
+      net = conv2d_same(inputs, K, kernel_size=(kernel_size,1), stride=[stride,1],
                          scope=layer1_name, pad_name='Pad_sep1')
     
       layer2_name = LayerName(layer_name + '_K'+str(K))
@@ -243,7 +243,7 @@ class resnetv1_sep(resnetv1):
       biases_initializer=None,
       biases_regularizer=None): #make first layer clean, no BN no biases no activation func
      
-      net = slim.conv2d(net_conv4, K[0], [3, 1], trainable=is_training, weights_initializer=initializer,
+      net = slim.conv2d(net_conv4, K, [3, 1], trainable=is_training, weights_initializer=initializer,
                         scope=layer1_name)
 
       layer2_name = LayerName(layer_name + '_K'+str(K))
@@ -271,7 +271,7 @@ class resnetv1_sep(resnetv1):
       biases_initializer=None,
       biases_regularizer=None): #make first layer clean, no BN no biases no activation func
      
-      net = slim.fully_connected(input_, K[0], weights_initializer=initializer,
+      net = slim.fully_connected(input_, K, weights_initializer=initializer,
                                 trainable=is_training, activation_fn=None, scope=layer1_name)
 
     layer2_name = LayerName(layer_name + '_K'+str(K))

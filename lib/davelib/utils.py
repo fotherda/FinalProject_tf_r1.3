@@ -18,6 +18,8 @@ from datasets.factory import get_imdb
 from utils.timer import Timer
 
 
+UNCOMPRESSED = 0 #enum used to indicate K=0 => uncompressed
+
 class colour:
   PURPLE = '\033[95m'
   CYAN = '\033[96m'
@@ -29,6 +31,13 @@ class colour:
   BOLD = '\033[1m'
   UNDERLINE = '\033[4m'
   END = '\033[0m'
+
+class Singleton(type):
+  _instances = {}
+  def __call__(cls, *args, **kwargs):
+    if cls not in cls._instances:
+        cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+    return cls._instances[cls]
 
   
 def run_test_metric(num_imgs_list, net, sess, filename=None):

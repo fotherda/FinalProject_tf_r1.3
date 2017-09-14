@@ -264,10 +264,10 @@ class resnetv1_pluri(resnetv1_sep):
     return tf.case(case_dict, default=uncompressed_func, exclusive=True)
 
 
-  def _check_proposed_active_path(self, net_desc):
+  def _check_proposed_active_path(self, subnet_desc):
     #the active path must be a subset of the possible layers and Ks
-    for layer, Ks in net_desc.items():
-      active_K = Ks[0]
+    for layer, K in subnet_desc.items():
+      active_K = K
       active_K_possible = False
       if layer in self._net_desc:
         Ks_ = self._net_desc[layer]
@@ -296,7 +296,7 @@ class resnetv1_pluri(resnetv1_sep):
     #now set all entries in net_desc in the table
     for layer, K in net_desc.items():
       keys.append(layer)
-      values.append(K[0])
+      values.append(K)
     self._K_by_layer_table.insert(tf.constant(keys, dtype=tf.string), 
                                   tf.constant(values, dtype=tf.int64)).run(session=sess)
     

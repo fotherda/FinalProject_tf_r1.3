@@ -5,17 +5,19 @@ Created on 8 Aug 2017
 '''
 import pickle as pi
 import os
-from davelib.utils import run_test_metric
+from davelib.utils import run_test_metric, Singleton
 from collections import defaultdict
+from model.config import cfg
+
 
 mAP_filename = 'base_net_mAPs.pi'
 
-class BaseNetWrapper(object):
+class BaseNetWrapper(metaclass=Singleton):
 
   def __init__(self, base_resnet):
     self._base_net = base_resnet
     
-  def mAP(self, num_imgs_list, rpn_post_nms_top_n, sess): #get mean average precision
+  def mAP(self, num_imgs_list, rpn_post_nms_top_n=cfg.TEST.RPN_POST_NMS_TOP_N, sess=None): #get mean average precision
     ret_dict = {}
     if len(num_imgs_list) == 1:
       num_imgs = num_imgs_list[0]

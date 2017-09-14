@@ -10,17 +10,17 @@ import matplotlib.pyplot as plt
 from collections import OrderedDict,defaultdict
 from davelib.layer_name import compress_label
 from matplotlib.ticker import MaxNLocator, FuncFormatter, FormatStrFormatter
-
+from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, inset_axes
 
 
 class OptimisationResults():
   def __init__(self, expected_efficiency_delta, actual_perf_delta, expected_perf_delta,
-               net_desc, net_change, perf_label, efficiency_label):
+               net_desc, compression_step, perf_label, efficiency_label):
     self._expected_efficiency_delta = expected_efficiency_delta
     self._actual_perf_delta = actual_perf_delta
     self._expected_perf_delta = expected_perf_delta
     self._net_desc = net_desc
-    self._net_change = net_change
+    self._compression_step = compression_step
     self._perf_label = perf_label
     self._efficiency_label = efficiency_label
   
@@ -63,32 +63,33 @@ def plot_results(opt_results_list):
     
   fig, ax = plt.subplots(figsize=(12,7))
   
-  ax = plt.subplot(3, 1, 1)
+  ax = plt.subplot(2, 1, 1)
   ys = plot_effic
   ax.plot(xs, ys,'o-')
   plt.ylabel(res._efficiency_label.replace('_',' '), fontsize=12)
   ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: '{:.1%}'.format(x)))
-  ax.text(.4,.8,'Efficiency Metric', ha='center', transform=ax.transAxes, color='r', fontsize=16)
+  ax.text(.6,.9,'Efficiency Metric', ha='center', transform=ax.transAxes, color='r', fontsize=16)
   ax.set_xlim(xmin=0, xmax=len(xs)+1)
   ax.xaxis.set_major_locator(plt.NullLocator())
   
-  ax = plt.subplot(3, 1, 2)
-  ax.plot(xs, plot_act_perf,'.-', label='actual')
-  ax.plot(xs, plot_exp_perf,'.-', label='expected')
+  ax = plt.subplot(2, 1, 2)
+  ax.plot(xs, plot_act_perf,'o-', label='actual')
+  ax.plot(xs, plot_exp_perf,'o-', label='expected')
   plt.ylabel(res._perf_label.replace('_',' '), fontsize=12)
   plt.xlabel('model compression iteration \u27f6', fontsize=14)
   plt.xticks(xs, data_labels, rotation='vertical')
-  ax.text(.4,.8,'Performance Metric', ha='center', transform=ax.transAxes, color='r', fontsize=16)
-  
-#   ax = plt.subplot(3, 1, 3)
-#   ax.plot(xs, plot_exp_perf,'o-')
-#   plt.ylabel(res._perf_label.replace('_',' '), fontsize=12)
-#   plt.xlabel('model compression iteration \u27f6', fontsize=14)
-#   plt.xticks(xs, data_labels, rotation='vertical')
-#   ax.text(.4,.8,'Performance Metric', ha='center', transform=ax.transAxes, color='r', fontsize=16)
+  ax.text(.6,.9,'Performance Metric', ha='center', transform=ax.transAxes, color='r', fontsize=16)
+  plt.legend()
   
   ax.set_xlim(xmin=0, xmax=len(xs)+1)
   ax.set_ylim(ymin=0, ymax=2.0)
+  
+  axins = inset_axes(ax, width="30%", height='60%', loc=4)
+  axins.plot(xs, plot_act_perf)
+  axins.plot(xs, plot_exp_perf)
+  axins.text(.5,.8,'Full data range', ha='center', transform=axins.transAxes, fontsize=12)
+  plt.xticks(visible=False) 
+   
   plt.subplots_adjust(left=0.07, right=0.99, top=0.98, bottom=0.35, hspace=0.07)
   plt.show()  
 

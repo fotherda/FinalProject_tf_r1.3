@@ -128,14 +128,10 @@ class SeparableNet(object):
                         base_weights_dict=self._base_weights_dict, net_desc=self._net_desc)
     
   def _assign_weights(self):
-    _t = Timer()
-    _t.tic()
-    self._assign_trained_weights_to_unchanged_layers()
-    self._assign_trained_weights_to_separable_layers()  
-    _t.toc()
-    print('{} init took: {:.3f}s'.format(self.__class__.__name__, _t.diff))
+    with timer('{} init '.format(self.__class__.__name__) ):
+      self._assign_trained_weights_to_unchanged_layers()
+      self._assign_trained_weights_to_separable_layers()  
 
-    
   def _assign_trained_weights_to_unchanged_layers(self):
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
       restore_var_dict = {}

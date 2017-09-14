@@ -40,6 +40,7 @@ import tensorflow as tf
 from nets.vgg16 import vgg16
 from nets.resnet_v1 import resnetv1
 import davelib.convert_kernel as convert_kernel
+from davelib.display_results import display
 
 CLASSES = ('__background__',
            'aeroplane', 'bicycle', 'bird', 'boat',
@@ -115,6 +116,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Tensorflow Faster R-CNN demo')
     parser.add_argument('--net', dest='demo_net', help='Network to use [vgg16 res101]',
                         choices=NETS.keys(), default='res101')
+    parser.add_argument('-display_results', action='store_true', help='just display saved results')
     parser.add_argument('--dataset', dest='dataset', help='Trained dataset [pascal_voc pascal_voc_0712]',
                         choices=DATASETS.keys(), default='pascal_voc_0712')
     args = parser.parse_args()
@@ -125,7 +127,9 @@ if __name__ == '__main__':
     cfg.TEST.HAS_RPN = True  # Use RPN for proposals
     args = parse_args()
 
-    convert_kernel.pre_tasks()
+    if args.display_results:
+      display()
+      exit()
 
     # model path
     demonet = args.demo_net

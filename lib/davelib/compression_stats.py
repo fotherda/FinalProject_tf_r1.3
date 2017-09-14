@@ -7,108 +7,29 @@ import numpy as np
 import pickle as pi
 import matplotlib.pyplot as plt
 import re, time
-import sys  
+import davelib.utils as utils
 
 # reload(sys)  
 # sys.setdefaultencoding('utf8')
 
-from collections import OrderedDict,defaultdict
+from collections import defaultdict
 from matplotlib.ticker import MaxNLocator, FuncFormatter, FormatStrFormatter
 from sklearn import linear_model
 from kernel_regression import KernelRegression
 from sklearn.svm import SVR
-# from sklearn.grid_search import GridSearchCV
 from sklearn.model_selection import GridSearchCV, learning_curve
-# from sklearn.learning_curve import learning_curve
 
-from functools import total_ordering
 from mpl_toolkits.mplot3d import *
-from random import random, seed
-from matplotlib import cm
 from davelib.profile_stats import ProfileStats
+from davelib.compressed_net_description import CompressedNetDescription
 
 root_filename = 'CompressionStats_'
 
-class NetChange():
-  
-  def __init__(self, layer, K_old, K_new):
-    self._layer = layer
-    self._K_old = K_old
-    self._K_new = K_new
-    
-
-@total_ordering
-class CompressedNetDescription(dict):
-   
-  def __init__(self, Ks_by_layer_dict):
-    items = []
-#     self._Ks = []
-    for layer, Ks in Ks_by_layer_dict.items():
-      self[layer] = Ks
-#       self._Ks.append(K)
-      items.extend( (layer, tuple(Ks)) )
-    self._key = tuple(items)
-
-#   def __init__(self, compressed_layers, Ks):
-#     items = []
-# #     self._Ks = []
-#     for layer, K in zip(compressed_layers,Ks):
-#       self[layer] = K
-# #       self._Ks.append(K)
-#       items.extend((layer, K))
-#     self._key = tuple(items)
-      
-#   def __key(self):
-#     return self['conv1']
-  
-  def __key(self):
-    return self._key
-   
-  def __eq__(self, other):
-    if isinstance(other, self.__class__):
-      if not self.__key() and not other.__key():
-        return True
-      else:
-        return self.__key() == other.__key()
-    return False
-  
-  def __hash__(self):
-    return hash(self.__key())
-  
-  def __lt__(self, other):
-    if not self:
-      if not other:
-        return True
-      else:
-        return True
-    elif not other:
-      return False
-    else:
-      return list(self.keys())[0] < list(other.keys())[0]
-  
-#   def __str__(self):
-#     return '\n'.join(map(str, sorted(self.items())))
-
-  def get_Kfrac(self):
-    if len(self) == 0: # uncompressed
-      return 0.0
-    for layer, K in self.items():
-      if 'block4' in layer and 'conv2' in layer:
-        Kfrac = K[0] / 768.0
-        break
-      elif 'block3' in layer and 'conv2' in layer:
-        Kfrac = K[0] / 384.0
-        break
-      elif 'block' not in layer and 'conv1' in layer:
-        Kfrac = K[0] / 20.0
-        break
-    return Kfrac
 
 class CompressionStats(object):
 
-  def __init__(self, filename_suffix='', load_from_file=True, all_Kmaxs_dict=None):
+  def __init__(self, filename_suffix='', load_from_file=True):
     self._filename_suffix = filename_suffix
-    self._all_Kmaxs_dict = all_Kmaxs_dict
     if load_from_file: #load from pickle file
       self.load_from_file(root_filename+filename_suffix+'.pi')
       self.convert_old_names_to_new()

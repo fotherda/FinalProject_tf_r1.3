@@ -3,6 +3,9 @@ Created on 10 Jul 2017
 
 @author: david
 '''
+
+import davelib.utils as utils
+
 from functools import total_ordering
 from collections import OrderedDict
 from symbol import except_clause
