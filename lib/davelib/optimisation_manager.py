@@ -41,6 +41,8 @@ class OptimisationManager():
     compressed_layers = get_all_compressible_layers()
     compressed_layers = remove_all_conv_1x1(compressed_layers)
     compressed_layers.remove('bbox_pred')
+    compressed_layers = remove_layers_not_in_blocks(compressed_layers, [1,2,4])
+    print(sorted(compressed_layers))
     comp_layer_label='noconv1x1'
 #     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = [LayerName('conv1')]
@@ -67,6 +69,7 @@ class OptimisationManager():
     
     efficiency_dict_keys = remove_all_conv_1x1(self._efficiency_dict.keys())
     efficiency_dict_keys.remove('bbox_pred') #must remove or it will always 'win' as has no effect on cls_score
+    efficiency_dict_keys = remove_layers_not_in_blocks(efficiency_dict_keys, [1,2,4])
     efficiency_dict = { k: self._efficiency_dict[k] for k in efficiency_dict_keys }
 #     efficiency_dict = remove_all_except_conv2_first_conv1(efficiency_dict)
 
@@ -98,14 +101,23 @@ class OptimisationManager():
 
   def _expected_delta(self, compression_step, metric_dict): 
     layer, K_old, K_new = compression_step._layer, compression_step._K_old, compression_step._K_new  
-    if K_new == None: #max compression reached for this layer
-      return 0
-    elif K_old != 0: #already compressed this layer a bit
-      metric_delta = metric_dict[layer][K_new] - metric_dict[layer][K_old]
-    else: #this layer hasn't been compressed at all yet
-      metric_delta = metric_dict[layer][K_new]
-      
-    return metric_delta
+
+    new_metric = 0
+    if K_new != UNCOMPRESSED:
+      new_metric = metric_dict[layer][K_new]
+    old_metric = 0
+    if K_old != UNCOMPRESSED:
+      old_metric = metric_dict[layer][K_old]
+    return new_metric - old_metric
+#     if K_old != utils.UNCOMPRESSED: #already compressed this layer a bit
+#       if K_new == utils.UNCOMPRESSED: #max compression reached for this layer
+#         return -metric_dict[layer][K_old]
+#       else:
+#         metric_delta = metric_dict[layer][K_new] - metric_dict[layer][K_old]
+#     else: #this layer hasn't been compressed at all yet
+#       metric_delta = metric_dict[layer][K_new]
+#       
+#     return metric_delta
 
   def _get_efficiency_metric(self, net_desc):
     sum_ = 0.0
@@ -143,14 +155,16 @@ class OptimisationManager():
 
       new_efficiency_metric = self._get_efficiency_metric(net_desc)
       new_performance_metric = compression_stats.get(net_desc, self._performance_label)
-      self._search_algo.set_model_results(net_desc, new_efficiency_metric, new_performance_metric)
     
       actual_perf_delta = new_performance_metric - old_performance_metric
       print('\t%s=%f'%(self._performance_label,new_performance_metric))
       
-      opt_results.append( OptimisationResults(expected_efficiency_delta, actual_perf_delta,
-                                       expected_perf_delta,
-                          net_desc, compression_step, self._performance_label, self._efficiency_label) )
+      this_iter_res = OptimisationResults(expected_efficiency_delta, actual_perf_delta,
+                        expected_perf_delta, net_desc, compression_step, 
+                        self._performance_label, self._efficiency_label, 
+                        new_efficiency_metric, new_performance_metric)
+      opt_results.append( this_iter_res )
+      self._search_algo.set_model_results(this_iter_res)
 
       cum_efficiency_delta += expected_efficiency_delta
       print('\t%s=%f'%(self._efficiency_label,cum_efficiency_delta))

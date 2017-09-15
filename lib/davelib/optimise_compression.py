@@ -15,7 +15,8 @@ from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, inset_axes
 
 class OptimisationResults():
   def __init__(self, expected_efficiency_delta, actual_perf_delta, expected_perf_delta,
-               net_desc, compression_step, perf_label, efficiency_label):
+               net_desc, compression_step, perf_label, efficiency_label, 
+               new_efficiency_metric, new_performance_metric):
     self._expected_efficiency_delta = expected_efficiency_delta
     self._actual_perf_delta = actual_perf_delta
     self._expected_perf_delta = expected_perf_delta
@@ -23,6 +24,8 @@ class OptimisationResults():
     self._compression_step = compression_step
     self._perf_label = perf_label
     self._efficiency_label = efficiency_label
+    self._new_efficiency_metric = new_efficiency_metric
+    self._new_performance_metric = new_performance_metric
   
   
 def plot_results_from_file(filename):
@@ -41,23 +44,22 @@ def plot_results(opt_results_list):
   data_labels = []
   
   def abrev_label(res):
-    layer = res._net_change._layer
+    layer = res._compression_step._layer
+#     layer = res._net_change._layer
     label = layer.replace('bottleneck_v1/','').replace('unit_','u').replace('/conv2','').\
-                  replace('block','block').replace('/',' / ')  
-    return label + '   K:%d\u2192%d'%(res._net_change._K_old, res._net_change._K_new)
+                  replace('/',' / ')  
+    return label + '   K:%d\u2192%d'%(res._compression_step._K_old, res._compression_step._K_new)
+#     return label + '   K:%d\u2192%d'%(res._net_change._K_old, res._net_change._K_new)
   
   for i, res in enumerate(opt_results_list):
     cum_efficiency += res._expected_efficiency_delta
     cum_act_perf += res._actual_perf_delta
     cum_exp_perf += res._expected_perf_delta
-#     cum_act_perf += res._actual_perf_delta
-#     cum_exp_perf += res._expected_perf_delta
     
     plot_effic.append(cum_efficiency)
     plot_act_perf.append(cum_act_perf)
     plot_exp_perf.append(cum_exp_perf)
     xs.append(i+1)
-
     data_labels.append( abrev_label(res) )
 
     

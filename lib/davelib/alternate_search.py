@@ -4,6 +4,7 @@ Created on 13 Sep 2017
 @author: david
 '''
 import davelib.utils as utils
+import pickle as pi
 
 from davelib.compressed_net_description import * 
 from davelib.layer_name import LayerName, sort_func, ordered_layers
@@ -41,14 +42,18 @@ class AlternateSearch():
     self._ordered_layers = sorted(compressed_layers, key=lambda layer: sort_func(layer))
     self._compressing = True
     self._results_dict = {}
+    self._end_of_cycle_results_dict = {}
     self._models_list = []
     self._this_cycle_start_idx = 0
 
   def _get_next_K(self, layer):
     sorted_keys = list(reversed(sorted(self._efficiency_dict[layer].keys())))
-    K_old = self._net_desc[layer]
+    K_old = self._net_desc.K(layer)
+    if K_old == UNCOMPRESSED:
+      idx = -1
+    else:
+      idx = sorted_keys.index( K_old )
     
-    idx = sorted_keys.index( K_old )
     if self._compressing:
       if idx+1 < len(sorted_keys):
         K_new = sorted_keys[idx + 1]
@@ -58,7 +63,7 @@ class AlternateSearch():
       if idx-1 >= 0:
         K_new = sorted_keys[idx - 1]
       else:
-        K_new = utils.UNCOMPRESSED
+        K_new = UNCOMPRESSED
     return K_new
     
   def _get_next_layer(self):
@@ -78,18 +83,32 @@ class AlternateSearch():
     #look back over the completed cycle and select the 'best' model
     opt_objectives = {}
     for net_desc in self._models_list[self._this_cycle_start_idx:]:
-      new_efficiency_metric, new_performance_metric = self._results_dict[net_desc]
-      objective = new_efficiency_metric #swap in alternative objectives here
-      opt_objectives[objective] = net_desc 
-    
-    min_objective = list(sorted(opt_objectives))[0]
-    self._best_model = opt_objectives[min_objective]
-     
+      objective = self._results_dict[net_desc]._new_efficiency_metric #swap in alternative objectives here
+      opt_objectives[net_desc] = objective
+      
+    if len(opt_objectives) == 0: #means no new models were tested this cycle
+      print(colour.GREEN + self._comp_str() + 'no change')
+    else:
+      best_net_desc = list(sorted(opt_objectives, key=opt_objectives.get))[0]
+      changes = best_net_desc.get_differences(self._best_model)
+      assert len(changes)==1, 'Should only be one change in net / cycle' 
+      print(colour.GREEN + self._comp_str() + 'change: ' + str(changes[0]))
+      print(str(best_net_desc) + '\n')
+      self._best_model = best_net_desc
+      
+    self._end_of_cycle_results_dict[self._best_model] = self._results_dict[self._best_model]
+    pi.dump(self._end_of_cycle_results_dict, open('alt_srch_res','wb'))
+
     if self._compressing:
       self._compressing = False
     else:
       self._compressing = True
+    self._this_cycle_start_idx = len(self._models_list)
 
+  def _comp_str(self):
+    if self._compressing: return 'compressing cycle '
+    else: return 'uncompressing cycle '
+    
   def get_next_model(self):
     next_layer, cycle_complete = self._get_next_layer()
     
@@ -97,23 +116,24 @@ class AlternateSearch():
       self._cycle_completed()
       
     K_new = self._get_next_K(next_layer)
-    K_old = self._best_model[next_layer]
+    K_old = self._best_model.K(next_layer)
+    self._compression_step = CompressionStep(next_layer, K_old, K_new)
     if K_new == K_old:
       return self.get_next_model() #this layer is fully compressed so try the next layer
     
-    self._compression_step = CompressionStep(next_layer, K_old, K_new)
-    
-    self._net_desc = deepcopy(self._best_model)
-    self._net_desc = self._net_desc.apply_compression_step( self._compression_step )
+    self._net_desc = self._best_model.apply_compression_step( self._compression_step )
     if self._net_desc in self._results_dict: 
       return self.get_next_model() #already run this model
       
-    self._models_list.append(self._net_desc)
+    self._models_list.append(deepcopy(self._net_desc))
+    print(self._compression_step)
+#     print(self._net_desc)
     return self._net_desc, self._compression_step  
     
-  def set_model_results(self, net_desc, new_efficiency_metric, new_performance_metric):
-    if self._models_list[-1] != net_desc:
+  def set_model_results(self, this_iter_res):
+    net_desc = this_iter_res._net_desc
+    if self._models_list[-1] != net_desc or self._net_desc != net_desc:
       raise ValueError('model results don\'t match present model')
-    self._results_dict[self._net_desc] = (new_efficiency_metric, new_performance_metric)
+    self._results_dict[self._net_desc] = this_iter_res
     
     

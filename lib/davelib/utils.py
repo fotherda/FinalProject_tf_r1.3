@@ -18,7 +18,6 @@ from datasets.factory import get_imdb
 from utils.timer import Timer
 
 
-UNCOMPRESSED = 0 #enum used to indicate K=0 => uncompressed
 
 class colour:
   PURPLE = '\033[95m'

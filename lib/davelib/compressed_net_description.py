@@ -15,6 +15,7 @@ from mpl_toolkits.mplot3d import *
 from davelib.layer_name import * 
 from davelib.utils import colour
 
+UNCOMPRESSED = 0 #enum used to indicate K=0 => uncompressed
 
 def calc_Kmax(layer):
   shape = None
@@ -132,6 +133,8 @@ class CompressedNetDescription(dict):
     else:
       return list(self.keys()) < list(other.keys())
   
+  def __str__(self):
+    return str(sorted(self.items()))
 #   def __str__(self):
 #     return '\n'.join(map(str, sorted(self.items())))
 
@@ -156,13 +159,40 @@ class CompressedNetDescription(dict):
     if layer in self:
       true_K_old = self[layer]
     else:
-      true_K_old = utils.UNCOMPRESSED
+      true_K_old = UNCOMPRESSED
     if true_K_old != K_old:
       raise ValueError(layer+': K_old=%d incorrect, true K_old=%d'%(K_old, true_K_old))
     
     K_by_layer_dict = {layer: K for layer, K in self.items() } #copy
-    K_by_layer_dict[layer] = K_new
+    if K_new == UNCOMPRESSED:
+      del K_by_layer_dict[layer]
+    else:
+      K_by_layer_dict[layer] = K_new
     return CompressedNetDescription(K_by_layer_dict)
+  
+  def get_differences(self, other):
+    changes = []
+    common_layers = list(set(self.keys()) & set(other.keys()))
+    for layer in common_layers:
+      K_self = self[layer]
+      K_other = other[layer]
+      if K_self != K_other:
+        changes.append( CompressionStep(layer, K_other, K_self) )
+
+    other_only_layers = list(set(other.keys()) - set(self.keys())) 
+    for layer in other_only_layers:
+      changes.append( CompressionStep(layer, other[layer], UNCOMPRESSED) )
+      
+    self_only_layers = list(set(self.keys()) - set(other.keys())) 
+    for layer in self_only_layers:
+      changes.append( CompressionStep(layer, UNCOMPRESSED, self[layer]) )
+    return changes
+  
+  def K(self, layer):
+    if layer in self:
+      return self[layer]
+    else:
+      return UNCOMPRESSED
 
 
 @total_ordering

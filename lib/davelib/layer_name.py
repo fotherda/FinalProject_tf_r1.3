@@ -254,6 +254,17 @@ def remove_layers_after_block3(layer_names):
   filtered = [ v for v in layer_names[:] if 'block4' not in v and 'rpn_conv' not in v ]
   return filtered
 
+def remove_layers_not_in_blocks(layer_names, block_idxs): 
+  filtered = []
+  for v in layer_names:
+    append = False
+    for idx in block_idxs:
+      if 'block'+str(idx) in v:
+        append = True
+    if append:
+      filtered.append(v)
+  return filtered
+
 __ORDERED_LAYERS__ = [
   'Placeholder', #image
   'Placeholder_1', #image_info
