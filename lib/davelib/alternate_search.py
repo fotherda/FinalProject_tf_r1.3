@@ -10,23 +10,39 @@ from davelib.layer_name import LayerName, sort_func, ordered_layers
 from copy import deepcopy
  
   
+def change_missing_compressions(template_dict, net_desc):
+  #if any K in the net_desc isn't in the template dict change it to the nearest one that is
+  K_by_layer_dict = {}
+  for layer, d in template_dict.items():
+    K_net = net_desc[layer]
+    if not K_net in d:
+      diffs = {}
+      for K in d:
+        diff = abs(K - K_net)
+        diffs[diff] = K
+      min_diff = min(diffs)
+      closest_K = diffs[min_diff]
+      K_by_layer_dict[layer] = closest_K
+    else:
+      K_by_layer_dict[layer] = K_net
+  return CompressedNetDescription(K_by_layer_dict)
+  
 class AlternateSearch():
   
-  def __init__(self, net_desc, efficiency_dict, performance_dict, perf_metric_increases_with_degradation,
+  def __init__(self, initial_net_desc, efficiency_dict, performance_dict, perf_metric_increases_with_degradation,
                compressed_layers):
-    self._net_desc = net_desc
-    self._best_model = net_desc
+    initial_net_desc = change_missing_compressions(efficiency_dict, initial_net_desc)
+    self._net_desc = initial_net_desc
+    self._best_model = initial_net_desc
     self._compression_step = None
     self._efficiency_dict = efficiency_dict
     self._performance_dict = performance_dict
     self._perf_metric_increases_with_degradation = perf_metric_increases_with_degradation
     self._ordered_layers = sorted(compressed_layers, key=lambda layer: sort_func(layer))
-#     self._ordered_steps = self.build_search_order(simple=True)
     self._compressing = True
     self._results_dict = {}
     self._models_list = []
     self._this_cycle_start_idx = 0
-
 
   def _get_next_K(self, layer):
     sorted_keys = list(reversed(sorted(self._efficiency_dict[layer].keys())))
@@ -43,9 +59,7 @@ class AlternateSearch():
         K_new = sorted_keys[idx - 1]
       else:
         K_new = utils.UNCOMPRESSED
-        
     return K_new
-    
     
   def _get_next_layer(self):
     cycle_complete = False
@@ -75,7 +89,6 @@ class AlternateSearch():
       self._compressing = False
     else:
       self._compressing = True
-      
 
   def get_next_model(self):
     next_layer, cycle_complete = self._get_next_layer()
@@ -84,19 +97,19 @@ class AlternateSearch():
       self._cycle_completed()
       
     K_new = self._get_next_K(next_layer)
-    K_old = self._net_desc[next_layer]
+    K_old = self._best_model[next_layer]
     if K_new == K_old:
       return self.get_next_model() #this layer is fully compressed so try the next layer
     
-    comp_step = CompressionStep(next_layer, K_old, K_new)
+    self._compression_step = CompressionStep(next_layer, K_old, K_new)
     
     self._net_desc = deepcopy(self._best_model)
-    self._net_desc.apply_compression_step(comp_step)
+    self._net_desc = self._net_desc.apply_compression_step( self._compression_step )
     if self._net_desc in self._results_dict: 
       return self.get_next_model() #already run this model
       
     self._models_list.append(self._net_desc)
-    return self._net_desc, comp_step  
+    return self._net_desc, self._compression_step  
     
   def set_model_results(self, net_desc, new_efficiency_metric, new_performance_metric):
     if self._models_list[-1] != net_desc:
@@ -104,8 +117,3 @@ class AlternateSearch():
     self._results_dict[self._net_desc] = (new_efficiency_metric, new_performance_metric)
     
     
-    
-    
-    
-    
-        

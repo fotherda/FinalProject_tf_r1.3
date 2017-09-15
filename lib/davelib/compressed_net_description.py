@@ -13,6 +13,7 @@ import davelib.utils as utils
 from functools import total_ordering
 from mpl_toolkits.mplot3d import *
 from davelib.layer_name import * 
+from davelib.utils import colour
 
 
 def calc_Kmax(layer):
@@ -41,7 +42,7 @@ def calc_all_Kmaxs():
   return d
   
   
-_all_Kmaxs_dict={}
+_all_Kmaxs_dict=None
 
 def all_Kmaxs_dict():
   global _all_Kmaxs_dict
@@ -88,6 +89,10 @@ class CompressionStep():
     self._layer = layer
     self._K_old = K_old
     self._K_new = K_new
+    
+  def __str__(self):
+    return colour.RED + '%s: K:%d\u2192%d'%(self._layer,self._K_old,self._K_new) + colour.END
+
   
 
 @total_ordering
@@ -153,9 +158,11 @@ class CompressedNetDescription(dict):
     else:
       true_K_old = utils.UNCOMPRESSED
     if true_K_old != K_old:
-      raise ValueError('K_old=%d incorrect, true K_old=%d'%(K_old, true_K_old))
+      raise ValueError(layer+': K_old=%d incorrect, true K_old=%d'%(K_old, true_K_old))
     
-    self[layer] = K_new
+    K_by_layer_dict = {layer: K for layer, K in self.items() } #copy
+    K_by_layer_dict[layer] = K_new
+    return CompressedNetDescription(K_by_layer_dict)
 
 
 @total_ordering

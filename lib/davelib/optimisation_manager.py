@@ -7,15 +7,14 @@ import tensorflow as tf
 import pickle as pi
 
 from davelib.pluripotent_net import PluripotentNet
-
 from davelib.layer_name import * 
 from davelib.compressed_net_description import * 
 from davelib.alternate_search import AlternateSearch
 from davelib.base_net import BaseNetWrapper
 from model.config import cfg
-
 from davelib.compression_stats import CompressionStats
 from davelib.optimise_compression import OptimisationResults, plot_results_from_file
+
 
 class OptimisationManager():
   
@@ -41,6 +40,7 @@ class OptimisationManager():
 
     compressed_layers = get_all_compressible_layers()
     compressed_layers = remove_all_conv_1x1(compressed_layers)
+    compressed_layers.remove('bbox_pred')
     comp_layer_label='noconv1x1'
 #     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = [LayerName('conv1')]
@@ -51,9 +51,10 @@ class OptimisationManager():
     Kfracs_label='0.1-1.0'
 #     Kfracs = [0.6]
 #     Kfracs_label='0.6'
-    self._num_imgs_list=[10]
-    self._output_layers = []
-#     output_layers = self._final_layers
+#     self._num_imgs_list=[10]
+    self._num_imgs_list=[]
+#     self._output_layers = []
+    self._output_layers = self._exp_controller._final_layers
 
     filename = 'pluri_net_' + Kfracs_label + '_' + comp_layer_label
 
@@ -68,6 +69,7 @@ class OptimisationManager():
     efficiency_dict_keys.remove('bbox_pred') #must remove or it will always 'win' as has no effect on cls_score
     efficiency_dict = { k: self._efficiency_dict[k] for k in efficiency_dict_keys }
 #     efficiency_dict = remove_all_except_conv2_first_conv1(efficiency_dict)
+
 
     def remove_positive_delta_compressions(efficiency_dict):
       new_dict = {}
@@ -84,7 +86,7 @@ class OptimisationManager():
     self._efficiency_dict, removed_layers = remove_positive_delta_compressions(efficiency_dict)
     compressed_layers = list(set(compressed_layers)-set(removed_layers))
     
-    Kfracs = [0.6]
+    Kfracs = [0.9]
     initial_net_desc = build_net_desc(Kfracs, compressed_layers)
     
     self._search_algo = AlternateSearch(initial_net_desc, 
@@ -104,7 +106,12 @@ class OptimisationManager():
       metric_delta = metric_dict[layer][K_new]
       
     return metric_delta
-    
+
+  def _get_efficiency_metric(self, net_desc):
+    sum_ = 0.0
+    for layer, K in net_desc.items():
+      sum_ += self._efficiency_dict[layer][K]
+    return sum_
 
   def run_search(self, max_iter):
     compression_stats = CompressionStats(load_from_file=False)
@@ -134,11 +141,10 @@ class OptimisationManager():
                                                self._num_imgs_list, 
                                                run_profile_stats=False)
 
-      new_efficiency_metric = compression_stats.get(net_desc, self._efficiency_label)
+      new_efficiency_metric = self._get_efficiency_metric(net_desc)
       new_performance_metric = compression_stats.get(net_desc, self._performance_label)
       self._search_algo.set_model_results(net_desc, new_efficiency_metric, new_performance_metric)
     
-      
       actual_perf_delta = new_performance_metric - old_performance_metric
       print('\t%s=%f'%(self._performance_label,new_performance_metric))
       

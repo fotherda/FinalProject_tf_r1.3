@@ -79,7 +79,7 @@ class ExperimentController(TensorFlowTestCase):
       pi.dump( self._base_profile_stats, open( 'base_profile_stats.pi', "wb" ) )
     
     self._base_variables = tf.global_variables()
-#     self._all_Kmaxs_dict = self.calc_all_Kmaxs()
+    self._all_Kmaxs_dict = calc_all_Kmaxs()
     self._compression_stats = CompressionStats(filename_suffix=stats_file_suffix, 
                                                load_from_file=False)
     self.get_var_dicts()
@@ -121,56 +121,6 @@ class ExperimentController(TensorFlowTestCase):
           self._comp_bias_vars_dict[name] = tensor_value
         else:
           self._all_comp_weights_dict[name] = tensor_value
-
-#   def calc_all_Kmaxs(self):
-#     d = {}
-#     for layer in get_all_compressible_layers():
-#       Kmax = self.calc_Kmax(layer)
-#       d[layer] = Kmax
-#     return d
-#     
-#   def calc_Kmax(self, layer):
-#     shape = None
-#     for v in tf.global_variables():
-#       if '/'+layer.layer_weights() in v.name:
-#         shape = v.get_shape().as_list()
-#         break
-#     if not shape:
-#       raise Exception('layer not found') 
-#         
-#     if len(shape)==4: #convolutional layer
-#       H,W,C,N = tuple(shape)
-#       Kmax = int(C*W*H*N / (C*W + H*N)) # if K > Kmax will have more parameters in sep layer
-#     elif len(shape)==2: #fully connected layer
-#       C,N = tuple(shape)
-#       Kmax = int(C*N / (C + N)) # if K > Kmax will have more parameters in sep layer
-# 
-# #     print('%s %d %d %d'%(layer, C, N, Kmax))
-# 
-#     return Kmax
-#         
-#   def get_Ks(self, layer, K_fractions):
-#     Kmax = self._all_Kmaxs_dict[layer]
-#     Ks = []
-#     for K_frac in K_fractions:
-#       K = int(K_frac * Kmax)
-#       if K == 0:
-#         K = 1
-#       elif K > Kmax:
-#         K = Kmax
-#       elif K < 0:
-#         continue #don't add a K it means this is uncompressed
-#       Ks.append(K)
-#     return Ks
-#   
-#   def build_net_desc(self, Kfracs):
-#     K_by_layer_dict = {}
-#     for layer_name in self._compressed_layers:
-#       Ks = self.get_Ks(layer_name, Kfracs)
-#       if len(Ks) > 0:
-#         K_by_layer_dict[layer_name] = Ks
-#     net_desc = CompressedNetDescription(K_by_layer_dict)
-#     return net_desc
   
   def _get_next_model(self, layer_K_dict, efficiency_dict, performance_dict, 
                       perf_metric_increases_with_degradation, simple=True):
@@ -486,7 +436,7 @@ class ExperimentController(TensorFlowTestCase):
 def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
   
   exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '16')
-  exp_controller.run_optimise_mgr(max_iter=10, stats_file_suffix='allLayersKfrac0.1_1.0')
+  exp_controller.run_optimise_mgr(max_iter=100, stats_file_suffix='allLayersKfrac0.1_1.0')
 #   exp_controller.run_exp(num_imgs_list=[])
 #   exp_controller.run_exp(num_imgs_list=[10])
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
