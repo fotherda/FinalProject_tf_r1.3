@@ -59,8 +59,10 @@ def plot_results(opt_results_list):
     cum_act_perf += res._actual_perf_delta
     cum_exp_perf += res._expected_perf_delta
     
-    plot_effic.append(cum_efficiency)
-    plot_act_perf.append(cum_act_perf)
+    plot_effic.append(res._new_efficiency_metric)
+#     plot_effic.append(cum_efficiency)
+    plot_act_perf.append(res._new_performance_metric)
+#     plot_act_perf.append(cum_act_perf)
     plot_exp_perf.append(cum_exp_perf)
     xs.append(i+1)
     data_labels.append( abrev_label(res) )
@@ -89,7 +91,7 @@ def plot_results(opt_results_list):
   ax.set_xlim(xmin=0, xmax=len(xs)+1)
   ax.set_ylim(ymin=0, ymax=2.0)
   
-  axins = inset_axes(ax, width="30%", height='60%', loc=4)
+  axins = inset_axes(ax, width="30%", height='40%', loc=4)
   axins.plot(xs, plot_act_perf)
   axins.plot(xs, plot_exp_perf)
   axins.text(.5,.8,'Full data range', ha='center', transform=axins.transAxes, fontsize=12)

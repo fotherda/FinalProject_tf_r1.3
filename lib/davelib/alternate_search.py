@@ -33,7 +33,7 @@ class AlternateSearch():
   def __init__(self, initial_net_desc, efficiency_dict, performance_dict, perf_metric_increases_with_degradation,
                compressed_layers):
     initial_net_desc = change_missing_compressions(efficiency_dict, initial_net_desc)
-    self._net_desc = initial_net_desc
+#     self._net_desc = initial_net_desc
     self._best_model = initial_net_desc
     self._compression_step = None
     self._efficiency_dict = efficiency_dict
@@ -48,7 +48,7 @@ class AlternateSearch():
 
   def _get_next_K(self, layer):
     sorted_keys = list(reversed(sorted(self._efficiency_dict[layer].keys())))
-    K_old = self._net_desc.K(layer)
+    K_old = self._best_model.K(layer)
     if K_old == UNCOMPRESSED:
       idx = -1
     else:
@@ -64,11 +64,12 @@ class AlternateSearch():
         K_new = sorted_keys[idx - 1]
       else:
         K_new = UNCOMPRESSED
-    return K_new
+    return K_old, K_new
     
   def _get_next_layer(self):
     cycle_complete = False
     if not self._compression_step: #first step
+#     if len(self._models_list) == 0: #first step
       next_layer = self._ordered_layers[0]
     else:
       idx = self._ordered_layers.index(self._compression_step._layer)
@@ -96,7 +97,10 @@ class AlternateSearch():
       print(str(best_net_desc) + '\n')
       self._best_model = best_net_desc
       
-    self._end_of_cycle_results.append(self._results_dict[self._best_model])
+      
+    res = self._results_dict[self._best_model]
+#     self._net_desc = self._best_model  
+    self._end_of_cycle_results.append(res)
     pi.dump(self._end_of_cycle_results, open('alt_srch_res','wb'))
 
     if self._compressing:
@@ -109,31 +113,38 @@ class AlternateSearch():
     if self._compressing: return 'compressing cycle '
     else: return 'uncompressing cycle '
     
+  def _last_layer(self):
+    return self._models_list[-1]  
+    
   def get_next_model(self):
-    next_layer, cycle_complete = self._get_next_layer()
-    
-    if cycle_complete: #end of this set of un/compressions
-      self._cycle_completed()
+    while True:
+      next_layer, cycle_complete = self._get_next_layer()
       
-    K_new = self._get_next_K(next_layer)
-    K_old = self._best_model.K(next_layer)
-    self._compression_step = CompressionStep(next_layer, K_old, K_new)
-    if K_new == K_old:
-      return self.get_next_model() #this layer is fully compressed so try the next layer
-    
-    self._net_desc = self._best_model.apply_compression_step( self._compression_step )
-    if self._net_desc in self._results_dict: 
-      return self.get_next_model() #already run this model
+      if cycle_complete: #end of this set of un/compressions
+        self._cycle_completed()
+        
+      K_old, K_new = self._get_next_K(next_layer)
+#       K_old = self._best_model.K(next_layer)
+      self._compression_step = CompressionStep(next_layer, K_old, K_new)
+      if K_new == K_old:
+        continue  #this layer is fully un/compressed so try the next layer
+#         return self.get_next_model() #this layer is fully compressed so try the next layer
       
-    self._models_list.append(deepcopy(self._net_desc))
+      next_model = self._best_model.apply_compression_step( self._compression_step )
+      if next_model in self._results_dict: 
+        continue #already run this model
+#         return self.get_next_model() #already run this model
+      break  
+        
+    self._models_list.append(deepcopy(next_model))
     print(self._compression_step)
 #     print(self._net_desc)
-    return self._net_desc, self._compression_step  
+    return next_model, self._compression_step  
     
   def set_model_results(self, this_iter_res):
     net_desc = this_iter_res._net_desc
-    if self._models_list[-1] != net_desc or self._net_desc != net_desc:
+    if self._models_list[-1] != net_desc:
       raise ValueError('model results don\'t match present model')
-    self._results_dict[self._net_desc] = this_iter_res
+    self._results_dict[net_desc] = this_iter_res
     
     

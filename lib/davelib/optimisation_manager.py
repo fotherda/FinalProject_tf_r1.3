@@ -93,18 +93,16 @@ class OptimisationManager():
     compressed_layers = list(set(compressed_layers)-set(removed_layers))
     
     Kfracs = [0.9]
-    initial_net_desc = build_net_desc(Kfracs, compressed_layers)
+    self._initial_net_desc = build_net_desc(Kfracs, compressed_layers)
     
-    self._search_algo = AlternateSearch(initial_net_desc, 
+    self._search_algo = AlternateSearch(self._initial_net_desc, 
                                         self._efficiency_dict, 
                                         self._performance_dict, 
                                         self._perf_metric_increases_with_degradation,
                                         compressed_layers)
 
-
   def _expected_delta(self, compression_step, metric_dict): 
     layer, K_old, K_new = compression_step._layer, compression_step._K_old, compression_step._K_new  
-
     new_metric = 0
     if K_new != UNCOMPRESSED:
       new_metric = metric_dict[layer][K_new]
@@ -112,15 +110,6 @@ class OptimisationManager():
     if K_old != UNCOMPRESSED:
       old_metric = metric_dict[layer][K_old]
     return new_metric - old_metric
-#     if K_old != utils.UNCOMPRESSED: #already compressed this layer a bit
-#       if K_new == utils.UNCOMPRESSED: #max compression reached for this layer
-#         return -metric_dict[layer][K_old]
-#       else:
-#         metric_delta = metric_dict[layer][K_new] - metric_dict[layer][K_old]
-#     else: #this layer hasn't been compressed at all yet
-#       metric_delta = metric_dict[layer][K_new]
-#       
-#     return metric_delta
 
   def _get_efficiency_metric(self, net_desc):
     sum_ = 0.0
@@ -137,6 +126,10 @@ class OptimisationManager():
     for itern in range(max_iter):#each iteration compresses 1 layer (a bit more)
       print(str(itern+1), end=' ')
       
+#       if itern == 0:
+#         layer_K_dict = self._initial_net_desc
+#         compression_step = None
+#       else:
       layer_K_dict, compression_step = self._search_algo.get_next_model()
       
       expected_efficiency_delta = self._expected_delta( compression_step, self._efficiency_dict )   
@@ -182,4 +175,4 @@ class OptimisationManager():
     type_labels = ['float_ops_frac_delta','float_ops_count_delta',
                    'output_bytes_frac_delta','output_bytes_count_delta',
                    'parameters_frac_delta','parameters_count_delta']
-    compression_stats.plot_data_type_by_Kfracs(type_labels)
+#     compression_stats.plot_data_type_by_Kfracs(type_labels)
