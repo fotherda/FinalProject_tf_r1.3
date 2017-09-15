@@ -30,6 +30,7 @@ class CompressionStats(object):
 
   def __init__(self, filename_suffix='', load_from_file=True):
     self._filename_suffix = filename_suffix
+    self._base_profile_stats = None
     if load_from_file: #load from pickle file
       self.load_from_file(root_filename+filename_suffix+'.pi')
       self.convert_old_names_to_new()
@@ -60,6 +61,15 @@ class CompressionStats(object):
         new_label = old_label.replace('flops','float_ops').replace('total_bytes','output_bytes') 
         data_dict[new_label] = value
         
+  def remove_redundant_base_profile_stats(self):
+    base_profile_stats = None
+    for d in self._stats.values():
+      if 'base_profile_stats' in d:
+        base_profile_stats = d['base_profile_stats']
+        del d['base_profile_stats']
+    if base_profile_stats:
+      self._stats['base_profile_stats'] = base_profile_stats
+      
   def print_Kfracs(self):
     str_list = []
     str_list.append('Kfracs:\n')
@@ -70,10 +80,10 @@ class CompressionStats(object):
     str_list.append('Data Types:\n')
     for type_label in d:
         str_list.append(type_label + '\n')
-    
-  
     print( ''.join(str_list) )
+
   def load_from_file(self, filename):  
+#     self._stats, self._base_profile_stats = pi.load( open( filename, "rb") ) 
     self._stats = pi.load( open( filename, "rb") ) 
 
   def set(self, net_desc, type_label, value):
@@ -84,7 +94,8 @@ class CompressionStats(object):
 
   def set_profile_stats(self, net_desc, profile_stats, base_profile_stats):
     self.set(net_desc, 'profile_stats', profile_stats)
-    self.set(net_desc, 'base_profile_stats', base_profile_stats)
+#     self.set(net_desc, 'base_profile_stats', base_profile_stats)
+    self._stats['base_profile_stats'] = base_profile_stats
     
     for statsname, attrname in [
 #                                 ('_scope_all_stats', 'cpu_exec_micros'),
@@ -107,7 +118,7 @@ class CompressionStats(object):
   def save(self, suffix=None):
     if not suffix:
       suffix = self._filename_suffix
-    pi.dump( self._stats, open( '%s%s.pi'%(root_filename,suffix), "wb" ) )
+    pi.dump( (self._stats,self._base_profile_stats), open( '%s%s.pi'%(root_filename,suffix), "wb" ) )
 
 
   def add_data_type(self, type_label, values): #values must be in order to match sorted net descriptions

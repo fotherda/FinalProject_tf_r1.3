@@ -42,7 +42,7 @@ class AlternateSearch():
     self._ordered_layers = sorted(compressed_layers, key=lambda layer: sort_func(layer))
     self._compressing = True
     self._results_dict = {}
-    self._end_of_cycle_results_dict = {}
+    self._end_of_cycle_results = []
     self._models_list = []
     self._this_cycle_start_idx = 0
 
@@ -96,8 +96,8 @@ class AlternateSearch():
       print(str(best_net_desc) + '\n')
       self._best_model = best_net_desc
       
-    self._end_of_cycle_results_dict[self._best_model] = self._results_dict[self._best_model]
-    pi.dump(self._end_of_cycle_results_dict, open('alt_srch_res','wb'))
+    self._end_of_cycle_results.append(self._results_dict[self._best_model])
+    pi.dump(self._end_of_cycle_results, open('alt_srch_res','wb'))
 
     if self._compressing:
       self._compressing = False

@@ -22,6 +22,9 @@ class OptimisationManager():
     self._exp_controller = exp_controller
     guide_compression_stats = CompressionStats(filename_suffix=guide_stats_file_suffix, 
                                 load_from_file=True)
+#     guide_compression_stats.remove_redundant_base_profile_stats()
+#     guide_compression_stats.save(guide_stats_file_suffix)
+    
     mAP_dict = BaseNetWrapper(None).mAP([100])
     
     guide_compression_stats.add_missing_mAP_deltas( mAP_dict[100] )

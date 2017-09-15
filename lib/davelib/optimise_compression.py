@@ -51,8 +51,11 @@ def plot_results(opt_results_list):
     return label + '   K:%d\u2192%d'%(res._compression_step._K_old, res._compression_step._K_new)
 #     return label + '   K:%d\u2192%d'%(res._net_change._K_old, res._net_change._K_new)
   
+  
+#   opt_results_list = opt_results_list.values()
   for i, res in enumerate(opt_results_list):
     cum_efficiency += res._expected_efficiency_delta
+#     cum_act_perf += res._new_performance_metric
     cum_act_perf += res._actual_perf_delta
     cum_exp_perf += res._expected_perf_delta
     

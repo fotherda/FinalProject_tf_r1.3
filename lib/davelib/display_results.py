@@ -10,13 +10,13 @@ from davelib.optimise_compression import OptimisationResults, plot_results_from_
 
 def display():
 
-  plot_results_from_file('alt_srch_res')
+#   plot_results_from_file('alt_srch_res')
 #   plot_results_from_file('opt_results')
 #   plot_results_from_file('opt_path_flops_eff_perf')
 #   plot_results_from_file('opt_path_output_bytes_mAP_simple_10')
 #   plot_results_from_file('opt_path_output_bytes_eff_perf')
 #   plot_results_from_file('opt_path_output_bytes_eff_perf_10')
-#   plot_results_from_file('opt_results_output_bytes_clsscore')
+  plot_results_from_file('opt_results_output_bytes_clsscore')
   exit()
 
 #   print_for_latex()
