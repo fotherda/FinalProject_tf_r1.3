@@ -9,6 +9,7 @@ import pickle as pi
 from davelib.compressed_net_description import * 
 from davelib.layer_name import LayerName, sort_func, ordered_layers
 from copy import deepcopy
+from collections import OrderedDict
  
   
 def change_missing_compressions(template_dict, net_desc):
@@ -41,9 +42,10 @@ class AlternateSearch():
     self._perf_metric_increases_with_degradation = perf_metric_increases_with_degradation
     self._ordered_layers = sorted(compressed_layers, key=lambda layer: sort_func(layer))
     self._compressing = True
-    self._results_dict = {}
+#     self._results_dict = {}
     self._end_of_cycle_results = []
-    self._models_list = []
+    self._models_dict = OrderedDict({})
+#     self._models_list = []
     self._this_cycle_start_idx = 0
 
   def _get_next_K(self, layer):
@@ -83,8 +85,10 @@ class AlternateSearch():
   def _cycle_completed(self):
     #look back over the completed cycle and select the 'best' model
     opt_objectives = {}
-    for net_desc in self._models_list[self._this_cycle_start_idx:]:
-      objective = self._results_dict[net_desc]._new_efficiency_metric #swap in alternative objectives here
+    for net_desc, results in list(self._models_dict.items())[self._this_cycle_start_idx:]:
+#     for net_desc in self._models_list[self._this_cycle_start_idx:]:
+#       objective = self._results_dict[net_desc]._new_efficiency_metric #swap in alternative objectives here
+      objective = results._new_efficiency_metric #swap in alternative objectives here
       opt_objectives[net_desc] = objective
       
     if len(opt_objectives) == 0: #means no new models were tested this cycle
@@ -98,7 +102,8 @@ class AlternateSearch():
       self._best_model = best_net_desc
       
       
-    res = self._results_dict[self._best_model]
+    res = self._models_dict[self._best_model]
+#     res = self._results_dict[self._best_model]
 #     self._net_desc = self._best_model  
     self._end_of_cycle_results.append(res)
     pi.dump(self._end_of_cycle_results, open('alt_srch_res','wb'))
@@ -107,14 +112,14 @@ class AlternateSearch():
       self._compressing = False
     else:
       self._compressing = True
-    self._this_cycle_start_idx = len(self._models_list)
+    self._this_cycle_start_idx = len(self._models_dict)
 
   def _comp_str(self):
     if self._compressing: return 'compressing cycle '
     else: return 'uncompressing cycle '
     
-  def _last_layer(self):
-    return self._models_list[-1]  
+#   def _last_layer(self):
+#     return self._models_list[-1]  
     
   def get_next_model(self):
     while True:
@@ -131,20 +136,23 @@ class AlternateSearch():
 #         return self.get_next_model() #this layer is fully compressed so try the next layer
       
       next_model = self._best_model.apply_compression_step( self._compression_step )
-      if next_model in self._results_dict: 
+      if next_model in self._models_dict: 
+#       if next_model in self._results_dict: 
         continue #already run this model
 #         return self.get_next_model() #already run this model
       break  
         
-    self._models_list.append(deepcopy(next_model))
+    self._models_dict[next_model] = None
+#     self._models_list.append(next_model)
     print(self._compression_step)
-#     print(self._net_desc)
+#     print(next_model)
     return next_model, self._compression_step  
     
   def set_model_results(self, this_iter_res):
     net_desc = this_iter_res._net_desc
-    if self._models_list[-1] != net_desc:
+    if next(reversed( self._models_dict )) != net_desc:
+#     if self._models_list[-1] != net_desc:
       raise ValueError('model results don\'t match present model')
-    self._results_dict[net_desc] = this_iter_res
+    self._models_dict[net_desc] = this_iter_res
     
     
