@@ -131,10 +131,11 @@ class OptimisationManager():
 #         compression_step = None
 #       else:
       net_desc, compression_step = self._search_algo.get_next_model()
+      if not net_desc: #means the serach has converged
+        break
       
       expected_efficiency_delta = self._expected_delta( compression_step, self._efficiency_dict )   
       expected_perf_delta = self._expected_delta( compression_step, self._performance_dict)   
-#       net_desc = CompressedNetDescription(layer_K_dict)
       
       self._pluri_net.set_active_path_through_net(net_desc, self._exp_controller._sess)
       

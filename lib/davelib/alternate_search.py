@@ -34,7 +34,6 @@ class AlternateSearch():
   def __init__(self, initial_net_desc, efficiency_dict, performance_dict, perf_metric_increases_with_degradation,
                compressed_layers):
     initial_net_desc = change_missing_compressions(efficiency_dict, initial_net_desc)
-#     self._net_desc = initial_net_desc
     self._best_model = initial_net_desc
     self._compression_step = None
     self._efficiency_dict = efficiency_dict
@@ -42,10 +41,8 @@ class AlternateSearch():
     self._perf_metric_increases_with_degradation = perf_metric_increases_with_degradation
     self._ordered_layers = sorted(compressed_layers, key=lambda layer: sort_func(layer))
     self._compressing = True
-#     self._results_dict = {}
     self._end_of_cycle_results = []
     self._models_dict = OrderedDict({})
-#     self._models_list = []
     self._this_cycle_start_idx = 0
 
   def _get_next_K(self, layer):
@@ -71,7 +68,6 @@ class AlternateSearch():
   def _get_next_layer(self):
     cycle_complete = False
     if not self._compression_step: #first step
-#     if len(self._models_list) == 0: #first step
       next_layer = self._ordered_layers[0]
     else:
       idx = self._ordered_layers.index(self._compression_step._layer)
@@ -86,8 +82,6 @@ class AlternateSearch():
     #look back over the completed cycle and select the 'best' model
     opt_objectives = {}
     for net_desc, results in list(self._models_dict.items())[self._this_cycle_start_idx:]:
-#     for net_desc in self._models_list[self._this_cycle_start_idx:]:
-#       objective = self._results_dict[net_desc]._new_efficiency_metric #swap in alternative objectives here
       objective = results._new_efficiency_metric #swap in alternative objectives here
       opt_objectives[net_desc] = objective
       
@@ -101,12 +95,10 @@ class AlternateSearch():
       print(str(best_net_desc) + '\n')
       self._best_model = best_net_desc
       
-      
     res = self._models_dict[self._best_model]
-#     res = self._results_dict[self._best_model]
-#     self._net_desc = self._best_model  
     self._end_of_cycle_results.append(res)
-    pi.dump(self._end_of_cycle_results, open('alt_srch_res','wb'))
+    with open('alt_srch_res','wb') as f:
+      pi.dump(self._end_of_cycle_results, f)
 
     if self._compressing:
       self._compressing = False
@@ -118,10 +110,10 @@ class AlternateSearch():
     if self._compressing: return 'compressing cycle '
     else: return 'uncompressing cycle '
     
-#   def _last_layer(self):
-#     return self._models_list[-1]  
-    
   def get_next_model(self):
+    if self._end_of_cycle_results[-1] == self._end_of_cycle_results[-2]:
+      return None, None #indicates we've converged
+    
     while True:
       next_layer, cycle_complete = self._get_next_layer()
       
@@ -129,21 +121,16 @@ class AlternateSearch():
         self._cycle_completed()
         
       K_old, K_new = self._get_next_K(next_layer)
-#       K_old = self._best_model.K(next_layer)
       self._compression_step = CompressionStep(next_layer, K_old, K_new)
       if K_new == K_old:
         continue  #this layer is fully un/compressed so try the next layer
-#         return self.get_next_model() #this layer is fully compressed so try the next layer
       
       next_model = self._best_model.apply_compression_step( self._compression_step )
       if next_model in self._models_dict: 
-#       if next_model in self._results_dict: 
-        continue #already run this model
-#         return self.get_next_model() #already run this model
+        continue #already run this model so try the next layer
       break  
         
-    self._models_dict[next_model] = None
-#     self._models_list.append(next_model)
+    self._models_dict[next_model] = None #this will be rplaced with the results once it's run
     print(self._compression_step)
 #     print(next_model)
     return next_model, self._compression_step  
@@ -151,7 +138,6 @@ class AlternateSearch():
   def set_model_results(self, this_iter_res):
     net_desc = this_iter_res._net_desc
     if next(reversed( self._models_dict )) != net_desc:
-#     if self._models_list[-1] != net_desc:
       raise ValueError('model results don\'t match present model')
     self._models_dict[net_desc] = this_iter_res
     

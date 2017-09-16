@@ -91,11 +91,11 @@ def plot_results(opt_results_list):
   ax.set_xlim(xmin=0, xmax=len(xs)+1)
   ax.set_ylim(ymin=0, ymax=2.0)
   
-  axins = inset_axes(ax, width="30%", height='40%', loc=4)
-  axins.plot(xs, plot_act_perf)
-  axins.plot(xs, plot_exp_perf)
-  axins.text(.5,.8,'Full data range', ha='center', transform=axins.transAxes, fontsize=12)
-  plt.xticks(visible=False) 
+#   axins = inset_axes(ax, width="30%", height='40%', loc=4)
+#   axins.plot(xs, plot_act_perf)
+#   axins.plot(xs, plot_exp_perf)
+#   axins.text(.5,.8,'Full data range', ha='center', transform=axins.transAxes, fontsize=12)
+#   plt.xticks(visible=False) 
    
   plt.subplots_adjust(left=0.07, right=0.99, top=0.98, bottom=0.35, hspace=0.07)
   plt.show()  
