@@ -111,9 +111,10 @@ class AlternateSearch():
     else: return 'uncompressing cycle '
     
   def get_next_model(self):
-    if self._end_of_cycle_results[-1] == self._end_of_cycle_results[-2]:
-      return None, None #indicates we've converged
-    
+    if len(self._end_of_cycle_results) >= 2:
+      if self._end_of_cycle_results[-1] == self._end_of_cycle_results[-2]:
+        return None, None #indicates we've converged
+      
     while True:
       next_layer, cycle_complete = self._get_next_layer()
       
