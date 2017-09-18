@@ -4,13 +4,23 @@ Created on 13 Sep 2017
 @author: david
 '''
 
-from davelib.optimise_compression import OptimisationResults, plot_results_from_file
+from davelib.optimise_compression import OptimisationResults, plot_results_from_file, \
+                    scatter_plot_results_from_file, plot_compression_profile_from_file
 
 
 
 def display():
 
-  plot_results_from_file('alt_srch_res_1000_flops_Kfrac0.9')
+
+
+#   scatter_plot_results_from_file('alt_srch_res_1000_flops_Kfrac0.9')
+#   plot_compression_profile_from_file('opt_results_output_bytes_clsscore')
+#   scatter_plot_results_from_file('opt_results_output_bytes_clsscore')
+  plot_compression_profile_from_file('alt_srch_res')
+  plot_results_from_file('alt_srch_res_comp')
+  plot_results_from_file('alt_srch_res')
+#   plot_results_from_file('alt_srch_res_flops_Kfrac0.9_allLayers')
+#   plot_results_from_file('alt_srch_res_1000_flops_Kfrac0.9')
 #   plot_results_from_file('opt_results')
 #   plot_results_from_file('opt_path_flops_eff_perf')
 #   plot_results_from_file('opt_path_output_bytes_mAP_simple_10')

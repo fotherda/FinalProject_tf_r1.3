@@ -4,6 +4,7 @@ Created on 13 Jul 2017
 @author: david
 '''
 import tensorflow as tf
+import re, os
 import numpy as np
 import pickle as pi
 import matplotlib.pyplot as plt
@@ -14,8 +15,15 @@ from functools import total_ordering
 from mpl_toolkits.mplot3d import *
 from davelib.layer_name import * 
 from davelib.utils import colour
+from matplotlib.patches import Rectangle
+from matplotlib.ticker import MaxNLocator, FuncFormatter, FormatStrFormatter
+
 
 UNCOMPRESSED = 0 #enum used to indicate K=0 => uncompressed
+
+DECOMPRESSION = -1
+COMPRESSION = 1
+NO_CHANGE = 0
 
 def calc_Kmax(layer):
   shape = None
@@ -24,7 +32,7 @@ def calc_Kmax(layer):
       shape = v.get_shape().as_list()
       break
   if not shape:
-    raise ValueError('layer not found') 
+    raise ValueError('%s - layer not found'%(layer)) 
       
   if len(shape)==4: #convolutional layer
     H,W,C,N = tuple(shape)
@@ -48,7 +56,12 @@ _all_Kmaxs_dict=None
 def all_Kmaxs_dict():
   global _all_Kmaxs_dict
   if not _all_Kmaxs_dict:
-    _all_Kmaxs_dict = calc_all_Kmaxs()
+    filename = 'all_Kmaxs_dict'
+    if os.path.isfile(filename):
+      _all_Kmaxs_dict = pi.load(open(filename,'rb'))
+    else:
+      _all_Kmaxs_dict = calc_all_Kmaxs()
+      pi.dump(_all_Kmaxs_dict, open(filename,'wb'))
   return _all_Kmaxs_dict
 
 def get_Ks(layer, K_fractions):
@@ -64,6 +77,14 @@ def get_Ks(layer, K_fractions):
       continue #don't add a K it means this is uncompressed
     Ks.append(K)
   return Ks
+
+def get_Kfrac(layer, K):
+  Kmax = all_Kmaxs_dict()[layer]
+  if K == UNCOMPRESSED:
+    Kfrac = 1.0
+  else:
+    Kfrac = K / Kmax
+  return Kfrac
 
 
 def build_net_desc(Kfrac, compressed_layers):
@@ -94,7 +115,25 @@ class CompressionStep():
   def __str__(self):
     return colour.RED + '%s: K:%d\u2192%d'%(self._layer,self._K_old,self._K_new) + colour.END
 
-  
+  def K_new(self):
+    if self._K_new == UNCOMPRESSED:
+      return sys.maxsize
+    else:
+      return self._K_new
+
+  def K_old(self):
+    if self._K_old == UNCOMPRESSED:
+      return sys.maxsize
+    else:
+      return self._K_old
+
+  def type(self):
+    if self.K_new() < self.K_old():
+      return COMPRESSION
+    elif self.K_new() > self.K_old():
+      return DECOMPRESSION
+    else:
+      return NO_CHANGE  
 
 @total_ordering
 class CompressedNetDescription(dict):
@@ -193,6 +232,83 @@ class CompressedNetDescription(dict):
       return self[layer]
     else:
       return UNCOMPRESSED
+    
+  def plot_compression_profile(self):
+    xs = []
+    ys = []
+    layer_names = []
+    block_start_idxs = {}
+    block_end_idxs = {}  
+
+    
+    
+    for i, layer in enumerate( get_all_compressible_layers() ):
+#     for i, layer in enumerate(sorted(self, key=lambda layer: sort_func(layer))):
+      if layer in self:
+        K = self[layer]
+      else:
+        K = UNCOMPRESSED
+      for b in range(1,5):
+        if 'block'+str(b) in layer:
+          block_end_idxs['block '+str(b)] = i+1
+          if 'block '+str(b) not in block_start_idxs:
+            block_start_idxs['block '+str(b)] = i+1
+      
+      disp_name = layer.replace('bottleneck_v1/','').replace('/unit_','unit ')
+      disp_name = disp_name.replace('bottleneck_v1','add')
+      
+#       idx = disp_name.find('/')
+#       if idx != -1:
+#         disp_name = disp_name[idx+1:]
+      disp_name = re.sub(r'block[0-9]','', disp_name)
+      disp_name = disp_name.replace('/',' / ')
+
+      layer_names.append(disp_name)
+      xs.append( i+1 )    
+      Kfrac = get_Kfrac(layer, K)    
+      ys.append( Kfrac )
+
+      
+    fig, ax = plt.subplots(1,1,figsize=(20,5))
+    
+    #do the block rectangle labels
+    ymax = max(ys)
+    height = ymax/7
+    ymin = -height - ymax/20
+    rectangles = {}
+    for b in range(1,5):
+      name = 'block '+str(b)
+      start = block_start_idxs[name]
+      end = block_end_idxs[name]
+      width = end-start
+      rectangles[name] = Rectangle((start, ymin), width, height, facecolor='green', alpha=0.5)
+     
+    start = block_end_idxs['block 3'] + 1
+    end = block_start_idxs['block 4'] - 1
+    width = end-start + 1
+    rectangles['RPN'] = Rectangle((start-0.5, ymin), width, height, facecolor='yellow', alpha=0.5)
+       
+    for r in rectangles:
+        ax.add_artist(rectangles[r])
+        rx, ry = rectangles[r].get_xy()
+        cx = rx + rectangles[r].get_width()/2.0
+        cy = ry + rectangles[r].get_height()/2.0
+        ax.annotate(r, (cx, cy), color='k', weight='bold', fontsize=14, ha='center', va='center')
+    
+    ax.plot(xs, ys,'o-')
+    ax.set_ylim(ymin=ymin)
+    ax.set_xlim(xmin=0, xmax=len(xs)+1)
+        
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: '{:.0%}'.format(x)))
+
+#     plt.xticks(xs, layer_names, rotation=45)
+    plt.xticks(xs, layer_names, rotation='vertical')
+    plt.ylabel('$K_{frac}$', fontsize=18)
+    plt.xlabel('layer', fontsize=16)
+    plt.subplots_adjust(left=0.05, right=0.99, top=0.98, bottom=0.3)
+    plt.show()  
+     
+    
 
 
 @total_ordering

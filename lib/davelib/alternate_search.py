@@ -78,17 +78,38 @@ class AlternateSearch():
         cycle_complete = True
     return next_layer, cycle_complete
   
-  def _cycle_completed(self):
-    #look back over the completed cycle and select the 'best' model
+  
+  def _best_effic(self):
     opt_objectives = {}
     for net_desc, results in list(self._models_dict.items())[self._this_cycle_start_idx:]:
-      objective = results._new_efficiency_metric #swap in alternative objectives here
+      objective = results._new_efficiency_metric 
       opt_objectives[net_desc] = objective
+    best_net_desc = list(sorted(opt_objectives, key=opt_objectives.get))[0]
+    return best_net_desc, opt_objectives[best_net_desc]
       
-    if len(opt_objectives) == 0: #means no new models were tested this cycle
+      
+  def _best_perf_for_best_effic(self):
+    #look back over the completed cycle and select the 'best' model
+    best_net_desc, best_effic = self._best_effic()
+    opt_objectives = {}
+    for net_desc, results in list(self._models_dict.items())[self._this_cycle_start_idx:]:
+      if results._new_efficiency_metric == best_effic:
+        opt_objectives[net_desc] = results._actual_perf_delta
+        
+    if self._perf_metric_increases_with_degradation:
+      best_net_desc = list(sorted(opt_objectives, key=opt_objectives.get))[0]
+    else:
+      best_net_desc = list(sorted(opt_objectives, key=opt_objectives.get))[-1]
+      
+    return best_net_desc, opt_objectives[best_net_desc]
+    
+    
+  def _cycle_completed(self):
+    if len(self._models_dict) == self._this_cycle_start_idx: #means no new models were tested this cycle
       print(colour.GREEN + self._comp_str() + 'no change')
     else:
-      best_net_desc = list(sorted(opt_objectives, key=opt_objectives.get))[0]
+#       best_net_desc, objective_val = self._best_perf_for_best_effic()
+      best_net_desc, objective_val = self._best_effic()
       changes = best_net_desc.get_differences(self._best_model)
       assert len(changes)==1, 'Should only be one change in net / cycle' 
       print(colour.GREEN + self._comp_str() + 'change: ' + str(changes[0]))

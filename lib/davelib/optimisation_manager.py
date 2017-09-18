@@ -14,7 +14,17 @@ from davelib.base_net import BaseNetWrapper
 from model.config import cfg
 from davelib.compression_stats import CompressionStats
 from davelib.optimise_compression import OptimisationResults, plot_results_from_file
+from copy import deepcopy
 
+def _expected_delta(compression_step, metric_dict): 
+  layer, K_old, K_new = compression_step._layer, compression_step._K_old, compression_step._K_new  
+  new_metric = 0
+  if K_new != UNCOMPRESSED:
+    new_metric = metric_dict[layer][K_new]
+  old_metric = 0
+  if K_old != UNCOMPRESSED:
+    old_metric = metric_dict[layer][K_old]
+  return new_metric - old_metric
 
 class OptimisationManager():
   
@@ -37,14 +47,14 @@ class OptimisationManager():
 #     guide_performance_label = 'mAP_100_top150_delta'
     guide_performance_label = 'diff_mean_cls_score'
     self._performance_label = 'diff_mean_cls_score'
-    self._perf_metric_increases_with_degradation = False
+    self._perf_metric_increases_with_degradation = True #true for diff_mean_cls_score false for mAP_***
 #     performance_label = 'diff_mean_cls_prob'
     use_simple = False #if false use the compound greedy serach
 
     compressed_layers = get_all_compressible_layers()
     compressed_layers = remove_all_conv_1x1(compressed_layers)
     compressed_layers.remove('bbox_pred')
-    compressed_layers = remove_layers_not_in_blocks(compressed_layers, [1,2,4])
+#     compressed_layers = remove_layers_not_in_blocks(compressed_layers, [1,2,4])
     print(sorted(compressed_layers))
     comp_layer_label='noconv1x1'
 #     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
@@ -72,8 +82,8 @@ class OptimisationManager():
     
     efficiency_dict_keys = remove_all_conv_1x1(self._efficiency_dict.keys())
     efficiency_dict_keys.remove('bbox_pred') #must remove or it will always 'win' as has no effect on cls_score
-    efficiency_dict_keys = remove_layers_not_in_blocks(efficiency_dict_keys, [1,2,4])
-    efficiency_dict = { k: self._efficiency_dict[k] for k in efficiency_dict_keys }
+#     efficiency_dict_keys = remove_layers_not_in_blocks(efficiency_dict_keys, [1,2,4])
+    self._full_efficiency_dict = { k: self._efficiency_dict[k] for k in efficiency_dict_keys }
 #     efficiency_dict = remove_all_except_conv2_first_conv1(efficiency_dict)
 
 
@@ -89,7 +99,9 @@ class OptimisationManager():
           print(k + ' has no +ve delta compressions')
       return new_dict, removed_layers
 
-    self._efficiency_dict, removed_layers = remove_positive_delta_compressions(efficiency_dict)
+
+
+    self._efficiency_dict, removed_layers = remove_positive_delta_compressions(self._full_efficiency_dict)
     compressed_layers = list(set(compressed_layers)-set(removed_layers))
     
     Kfracs = [0.9]
@@ -100,16 +112,7 @@ class OptimisationManager():
                                         self._performance_dict, 
                                         self._perf_metric_increases_with_degradation,
                                         compressed_layers)
-
-  def _expected_delta(self, compression_step, metric_dict): 
-    layer, K_old, K_new = compression_step._layer, compression_step._K_old, compression_step._K_new  
-    new_metric = 0
-    if K_new != UNCOMPRESSED:
-      new_metric = metric_dict[layer][K_new]
-    old_metric = 0
-    if K_old != UNCOMPRESSED:
-      old_metric = metric_dict[layer][K_old]
-    return new_metric - old_metric
+    
 
   def _get_efficiency_metric(self, net_desc):
     sum_ = 0.0
@@ -117,49 +120,62 @@ class OptimisationManager():
       sum_ += self._efficiency_dict[layer][K]
     return sum_
 
+  def _run(self, net_desc, compression_stats):
+    self._pluri_net.set_active_path_through_net(net_desc, self._exp_controller._sess)
+      
+    self._pluri_net.run_performance_analysis(net_desc, 
+                                             self._exp_controller._blobs_list, 
+                                             self._exp_controller._sess, 
+                                             self._exp_controller._base_outputs_list, 
+                                             self._output_layers, 
+                                             compression_stats, 
+                                             self._exp_controller._base_profile_stats, 
+                                             self._mAP_base_net,
+                                             self._num_imgs_list, 
+                                             run_profile_stats=False)
+
+    new_efficiency_metric = self._get_efficiency_metric(net_desc)
+    new_performance_metric = compression_stats.get(net_desc, self._performance_label)
+    return new_efficiency_metric, new_performance_metric
+
+  def _run_init_model(self, compression_stats):
+    tmp_dict = deepcopy(self._efficiency_dict)
+    self._efficiency_dict = self._full_efficiency_dict  
+    initial_efficiency_metric, initial_performance_metric = \
+                                      self._run(self._initial_net_desc, compression_stats)
+    self._efficiency_dict = tmp_dict  
+    return initial_efficiency_metric, initial_performance_metric 
+
+    
   def run_search(self, max_iter):
     compression_stats = CompressionStats(load_from_file=False)
     old_performance_metric = 0
     cum_efficiency_delta = 0 
     opt_results = [] 
 
+    initial_efficiency_metric, initial_performance_metric = self._run_init_model(compression_stats)
+                                          
     for itern in range(max_iter):#each iteration compresses 1 layer (a bit more)
       print(str(itern+1), end=' ')
       
-#       if itern == 0:
-#         layer_K_dict = self._initial_net_desc
-#         compression_step = None
-#       else:
       net_desc, compression_step = self._search_algo.get_next_model()
       if not net_desc: #means the serach has converged
+        print('search has converged after %d iterations'%(itern+1))
         break
       
-      expected_efficiency_delta = self._expected_delta( compression_step, self._efficiency_dict )   
-      expected_perf_delta = self._expected_delta( compression_step, self._performance_dict)   
+      expected_efficiency_delta = _expected_delta( compression_step, self._efficiency_dict )   
+      expected_perf_delta = _expected_delta( compression_step, self._performance_dict)   
+      new_expected_performance_metric = initial_performance_metric + expected_perf_delta
       
-      self._pluri_net.set_active_path_through_net(net_desc, self._exp_controller._sess)
-      
-      self._pluri_net.run_performance_analysis(net_desc, 
-                                               self._exp_controller._blobs_list, 
-                                               self._exp_controller._sess, 
-                                               self._exp_controller._base_outputs_list, 
-                                               self._output_layers, 
-                                               compression_stats, 
-                                               self._exp_controller._base_profile_stats, 
-                                               self._mAP_base_net,
-                                               self._num_imgs_list, 
-                                               run_profile_stats=False)
-
-      new_efficiency_metric = self._get_efficiency_metric(net_desc)
-      new_performance_metric = compression_stats.get(net_desc, self._performance_label)
-    
+      new_efficiency_metric, new_performance_metric = self._run(net_desc, compression_stats)
+          
       actual_perf_delta = new_performance_metric - old_performance_metric
       print('\t%s=%f'%(self._performance_label,new_performance_metric))
       
       this_iter_res = OptimisationResults(expected_efficiency_delta, actual_perf_delta,
                         expected_perf_delta, net_desc, compression_step, 
                         self._performance_label, self._efficiency_label, 
-                        new_efficiency_metric, new_performance_metric)
+                        new_efficiency_metric, new_performance_metric, new_expected_performance_metric)
       opt_results.append( this_iter_res )
       self._search_algo.set_model_results(this_iter_res)
 
@@ -171,7 +187,7 @@ class OptimisationManager():
       
       pi.dump( opt_results, open( 'opt_results_output_bytes_clsscore', "wb" ) )
 
-    print('Final optimised net description:\n' + str(net_desc))
+    print('Final optimised net description:\n' + str(opt_results[-1]._net_desc))
     
     type_labels = ['float_ops_frac_delta','float_ops_count_delta',
                    'output_bytes_frac_delta','output_bytes_count_delta',

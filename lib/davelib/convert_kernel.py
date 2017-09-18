@@ -188,7 +188,6 @@ class ExperimentController(TensorFlowTestCase):
     
   def run_optimise_mgr(self, max_iter, stats_file_suffix):
     opt_mgr = OptimisationManager(stats_file_suffix, self)  
-    
     opt_mgr.run_search(max_iter)
     
   def optimise_with_plurinet(self, max_iter, stats_file_suffix):
@@ -436,12 +435,12 @@ class ExperimentController(TensorFlowTestCase):
 def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
   
   exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '16')
-  exp_controller.run_optimise_mgr(max_iter=100, stats_file_suffix='allLayersKfrac0.1_1.0')
+  exp_controller.run_optimise_mgr(max_iter=5000, stats_file_suffix='allLayersKfrac0.1_1.0')
 #   exp_controller.run_exp(num_imgs_list=[])
 #   exp_controller.run_exp(num_imgs_list=[10])
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)
 #   exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='allLayersKfrac1.0')
-  exp_controller.optimise_with_plurinet(max_iter=10,stats_file_suffix='allLayersKfrac0.1_1.0')
+#   exp_controller.optimise_with_plurinet(max_iter=10,stats_file_suffix='allLayersKfrac0.1_1.0')
 #   exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='no1x1conv_0.1-1.0')
   
