@@ -86,6 +86,14 @@ class AlternateSearch():
       opt_objectives[net_desc] = objective
     best_net_desc = list(sorted(opt_objectives, key=opt_objectives.get))[0]
     return best_net_desc, opt_objectives[best_net_desc]
+
+  def _best_perf(self):
+    opt_objectives = {}
+    for net_desc, results in list(self._models_dict.items())[self._this_cycle_start_idx:]:
+      objective = results._new_performance_metric 
+      opt_objectives[net_desc] = objective
+    best_net_desc = list(sorted(opt_objectives, key=opt_objectives.get))[0]
+    return best_net_desc, opt_objectives[best_net_desc]
       
       
   def _best_perf_for_best_effic(self):
@@ -109,7 +117,8 @@ class AlternateSearch():
       print(colour.GREEN + self._comp_str() + 'no change')
     else:
 #       best_net_desc, objective_val = self._best_perf_for_best_effic()
-      best_net_desc, objective_val = self._best_effic()
+#       best_net_desc, objective_val = self._best_effic()
+      best_net_desc, objective_val = self._best_perf()
       changes = best_net_desc.get_differences(self._best_model)
       assert len(changes)==1, 'Should only be one change in net / cycle' 
       print(colour.GREEN + self._comp_str() + 'change: ' + str(changes[0]))

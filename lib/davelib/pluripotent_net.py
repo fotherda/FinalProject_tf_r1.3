@@ -18,7 +18,7 @@ class PluripotentNet(SeparableNet):
 
     
   def _init_resnet(self):
-      self._net_sep = resnetv1_pluri(batch_size=1, num_layers=101, base_weights_dict=self._base_weights_dict, 
+      self._net_sep = resnetv1_pluri(batch_size=1, num_layers=101, 
                                      net_desc=self._net_desc, sess=self._sess)
 
   def _assign_trained_weights_to_unchanged_layers(self):

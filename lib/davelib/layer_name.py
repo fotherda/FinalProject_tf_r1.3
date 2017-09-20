@@ -4,11 +4,8 @@ Created on 10 Jul 2017
 @author: david
 '''
 
-import davelib.utils as utils
-
 from functools import total_ordering
 from collections import OrderedDict
-from symbol import except_clause
 
 
 @total_ordering
@@ -123,11 +120,7 @@ class LayerName(str):
     return K  
     
     
-    
 def compress_label(layer):  
-#   idx = layer.find('/')
-#   if idx != -1:
-#     layer = layer[idx+1:]
   return layer.replace('bottelneck_v1/','').replace('unit_','u ')  
     
     
@@ -251,7 +244,8 @@ def remove_bottleneck_not_unit1(layer_names):
   return filtered
 
 def remove_layers_after_block3(layer_names):  
-  filtered = [ v for v in layer_names[:] if 'block4' not in v and 'rpn_conv' not in v ]
+  last_block3_idx = ordered_layers.index('block3/unit_23/bottleneck_v1')
+  filtered = [ v for v in layer_names[:] if ordered_layers.index(v) <= last_block3_idx ]
   return filtered
 
 def remove_layers_not_in_blocks(layer_names, block_idxs): 

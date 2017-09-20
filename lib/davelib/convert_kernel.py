@@ -362,10 +362,35 @@ class ExperimentController(TensorFlowTestCase):
       
     return pluri_net, mAP_base_net
       
+  def mAP_for_net(self, net_desc, num_imgs):
+    self._sess.close() #restart session to free memory and to reset profile stats
+    tf.reset_default_graph()
+    self._sess = tf.Session(config=self._tfconfig) 
+    
+    num_imgs_list = [num_imgs]
+    sep_net = SeparableNet(self._base_net, self._sess, self._saved_model_path, 
+                         self._all_comp_weights_dict, self._comp_bn_vars_dict, 
+                         self._comp_bias_vars_dict, net_desc, self._base_variables)
+    
+    mAP_base_net = self.get_mAP_base_net(num_imgs_list)  
+    compression_stats = CompressionStats(load_from_file=False)
+    
+    with timer('run_performance_analysis'):
+      sep_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
+                                     [], compression_stats, 
+                                     self._base_profile_stats, mAP_base_net, 
+                                     num_imgs_list, run_profile_stats=False)
+
+    mAP = compression_stats.get(net_desc, 'mAP_%d_top%d'%(num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N))
+    mAP_delta = compression_stats.get(net_desc, 'mAP_%d_top%d_delta'%
+                                                (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N))
+    return mAP
+
     
   def run_exp(self, num_imgs_list):
     compressed_layers = get_all_compressible_layers()
     compressed_layers = remove_all_conv_1x1(compressed_layers)
+    compressed_layers = remove_layers_after_block3(compressed_layers)
 #     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = remove_bottleneck_shortcut_layers(compressed_layers)
 #     compressed_layers = remove_bottleneck_not_unit1(compressed_layers)
@@ -373,6 +398,8 @@ class ExperimentController(TensorFlowTestCase):
 #     compressed_layers = [LayerName('rpn_conv/3x3')]
 #     compressed_layers = [LayerName('conv1/weights')]
 #     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2'), LayerName('rpn_conv/3x3')]
+#     print(compressed_layers)
+    self._final_layers = []
     
     #     Ks = range(1,11)
 #     layer_idxs = range(7)
@@ -384,14 +411,12 @@ class ExperimentController(TensorFlowTestCase):
     for l, layer_name in enumerate(sorted(compressed_layers)):
 #       if l not in layer_idxs:
 #         continue
-      self._compressed_layers = [layer_name]
-#       self._compressed_layers = compressed_layers
+#       self._compressed_layers = [layer_name]
+      self._compressed_layers = compressed_layers
       
-#       Kfracs = [0.5]
-#       Kfracs = [0.1,1.0,-1]
+      Kfracs = [0.5]
 #       Kfracs = np.arange(0.01, 1.0, 0.025)
-      Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
-#       Kfracs = [0.32,0.34,0.36,0.38]
+#       Kfracs = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
 #       Ks = self.get_Ks(layer_name, Kfracs)
 
       use_plurinet = False
@@ -400,13 +425,20 @@ class ExperimentController(TensorFlowTestCase):
         tf.reset_default_graph()
         self._sess = tf.Session(config=self._tfconfig) 
        
-        net_desc_pluri = self.build_net_desc(Kfracs)  
+        net_desc_pluri = build_pluri_net_desc(Kfracs, compressed_layers)  
+        
+        comp_layer_label='block1-3'
+        Kfracs_label='0.5'
+#         Kfracs_label='0.1-1.0'
+        filename = 'pluri_net_' + Kfracs_label + '_' + comp_layer_label
+
         pluri_net = PluripotentNet(self._base_net, self._sess, self._saved_model_path, 
-                                 self._all_comp_weights_dict, self._comp_bn_vars_dict, self._comp_bias_vars_dict, 
-                                 net_desc_pluri, self._base_variables)
+                                 self._all_comp_weights_dict, self._comp_bn_vars_dict, 
+                                 self._comp_bias_vars_dict, 
+                                 net_desc_pluri, self._base_variables, filename)
         
       for Kfrac in Kfracs:
-        net_desc = build_net_desc([Kfrac])  
+        net_desc = build_net_desc([Kfrac], compressed_layers)  
         
         if use_plurinet:
           pluri_net.run_performance_analysis(net_desc, self._blobs_list, self._sess, self._base_outputs_list, 
@@ -437,7 +469,7 @@ def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
   exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '16')
   exp_controller.run_optimise_mgr(max_iter=5000, stats_file_suffix='allLayersKfrac0.1_1.0')
 #   exp_controller.run_exp(num_imgs_list=[])
-#   exp_controller.run_exp(num_imgs_list=[10])
+#   exp_controller.run_exp(num_imgs_list=[25])
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)
 #   exp_controller.optimise_with_plurinet(max_iter=50,stats_file_suffix='allLayersKfrac1.0')

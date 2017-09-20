@@ -10,13 +10,14 @@ import ctypes
 import io
 import os
 import tempfile
+import datetime
+
 
 from contextlib import contextmanager
 from davelib.voc_img_sampler import VOCImgSampler
 from model.test import test_net, test_net_with_sample
 from datasets.factory import get_imdb
 from utils.timer import Timer
-
 
 
 class colour:
@@ -38,33 +39,33 @@ class Singleton(type):
         cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
     return cls._instances[cls]
 
-  
 def run_test_metric(num_imgs_list, net, sess, filename=None):
   imdb = get_imdb('voc_2007_test')
   if not filename:
     filename ='default/res101_faster_rcnn_iter_110000'
   
-  f = io.BytesIO()
-  with stdout_redirector(f): #this stops some meaningless info on stdout
-    if len(num_imgs_list)==1:
-      num_imgs = num_imgs_list[0]
-      if num_imgs == len(imdb.image_index):
-        mAP = test_net(sess, net, imdb, filename, max_per_image=100)
-        mAP_dict = {num_imgs: mAP}
+  with timer('run_test_metric - mAP calc'):
+    f = io.BytesIO()
+    with stdout_redirector(f): #this stops some meaningless info on stdout
+      if len(num_imgs_list)==1:
+        num_imgs = num_imgs_list[0]
+        if num_imgs == len(imdb.image_index):
+          mAP = test_net(sess, net, imdb, filename, max_per_image=100)
+          mAP_dict = {num_imgs: mAP}
+        else:
+          sampler = VOCImgSampler()
+          sample_images = sampler.get_imgs(num_imgs)
+          sample_names_dict = { num_imgs: sample_images }
+          mAP_dict = test_net_with_sample(sess, net, imdb, filename, sample_images, 
+                                     max_per_image=100, sample_names_dict=sample_names_dict)
       else:
         sampler = VOCImgSampler()
-        sample_images = sampler.get_imgs(num_imgs)
-        sample_names_dict = { num_imgs: sample_images }
+        sample_names_dict = sampler.get_nested_img_lists(num_imgs_list)
+        largest_num_imgs = (sorted(num_imgs_list))[-1]
+        sample_images = sample_names_dict[largest_num_imgs]
         mAP_dict = test_net_with_sample(sess, net, imdb, filename, sample_images, 
                                    max_per_image=100, sample_names_dict=sample_names_dict)
-    else:
-      sampler = VOCImgSampler()
-      sample_names_dict = sampler.get_nested_img_lists(num_imgs_list)
-      largest_num_imgs = (sorted(num_imgs_list))[-1]
-      sample_images = sample_names_dict[largest_num_imgs]
-      mAP_dict = test_net_with_sample(sess, net, imdb, filename, sample_images, 
-                                 max_per_image=100, sample_names_dict=sample_names_dict)
-    return mAP_dict
+      return mAP_dict
 
 
 
@@ -194,8 +195,8 @@ def test_stderr_redirector():
 
 def show_all_variables(show, *args):
   total_count = 0
-  for idx, var in enumerate(tf.get_default_graph().as_graph_def().node):
-#   for idx, var in enumerate(tf.global_variables()):
+#   for idx, var in enumerate(tf.get_default_graph().as_graph_def().node):
+  for idx, var in enumerate(tf.global_variables()):
 #   for idx, op in enumerate(tf.get_default_graph().get_operations()):
     shape = (0)
     if args:

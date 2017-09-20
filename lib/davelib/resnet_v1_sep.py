@@ -7,6 +7,7 @@ Created on 2 Jul 2017
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import numpy as np
+import datetime
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import arg_scope
@@ -27,10 +28,11 @@ from model.config import cfg
 from tensorflow.contrib.slim.python.slim.nets import resnet_v1
 from tensorflow.contrib.layers.python.layers import utils
 
+# from davelib.utils import *
+
 from nets.resnet_v1 import resnetv1
 from nets.resnet_v1 import resnet_arg_scope
 from davelib.layer_name import LayerName
-
 
 def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None, pad_name=None):
   """Strided 2-D convolution with 'SAME' padding.
@@ -100,11 +102,11 @@ def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None, pa
     
 class resnetv1_sep(resnetv1):
     
-  def __init__(self, batch_size, num_layers, base_weights_dict, net_desc):
+  def __init__(self, batch_size, num_layers, net_desc):
     resnetv1.__init__(self, batch_size, num_layers)
     self._resnet_scope = 'resnet_v1_%d' % (num_layers)  
 #     self._resnet_scope = 'resnet_v1_sep_%d' % (num_layers)  
-    self._base_weights_dict = base_weights_dict
+#     self._base_weights_dict = base_weights_dict
     self._net_desc = net_desc #can be CompressedNetDescription or PluriNetDescription
     self.bottleneck_func = self.bottleneck
     self._end_points_collection = self._resnet_scope + '_end_points'
@@ -197,7 +199,8 @@ class resnetv1_sep(resnetv1):
       layer1_name = LayerName(scope + '_sep_K'+str(K))
       intermediate = layers.conv2d(inputs, K, [1, 1], stride=1, scope=layer1_name)
      
-      layer2_name = LayerName(scope + '_K'+str(K))
+      layer2_name = LayerName(scope)
+#       layer2_name = LayerName(scope + '_K'+str(K))
     with arg_scope(
       [layers.conv2d],
       trainable=False): #make second layer with BN but with no biases
@@ -221,7 +224,8 @@ class resnetv1_sep(resnetv1):
       net = conv2d_same(inputs, K, kernel_size=(kernel_size,1), stride=[stride,1],
                          scope=layer1_name, pad_name='Pad_sep1')
     
-      layer2_name = LayerName(layer_name + '_K'+str(K))
+      layer2_name = LayerName(layer_name)
+#       layer2_name = LayerName(layer_name + '_K'+str(K))
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
       net = conv2d_same(net, num_output_channels, kernel_size=(1,kernel_size), 
                         stride=[1,stride], scope=layer2_name, pad_name='Pad_sep2')
@@ -246,7 +250,8 @@ class resnetv1_sep(resnetv1):
       net = slim.conv2d(net_conv4, K, [3, 1], trainable=is_training, weights_initializer=initializer,
                         scope=layer1_name)
 
-      layer2_name = LayerName(layer_name + '_K'+str(K))
+      layer2_name = LayerName(layer_name)
+#       layer2_name = LayerName(layer_name + '_K'+str(K))
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
       with arg_scope(
         [slim.conv2d],
@@ -274,7 +279,8 @@ class resnetv1_sep(resnetv1):
       net = slim.fully_connected(input_, K, weights_initializer=initializer,
                                 trainable=is_training, activation_fn=None, scope=layer1_name)
 
-    layer2_name = LayerName(layer_name + '_K'+str(K))
+    layer2_name = LayerName(layer_name)
+#     layer2_name = LayerName(layer_name + '_K'+str(K))
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
       with arg_scope(
         [slim.fully_connected],
@@ -290,9 +296,7 @@ class resnetv1_sep(resnetv1):
     layer_name = LayerName('conv1')
     if layer_name in self._net_desc:
       with tf.variable_scope(self._resnet_scope, self._resnet_scope):
-        N = self._base_weights_dict[layer_name].shape[3]
-  
-        net = self.separate_conv_layer(self._image, N, 7, 2, rate=None, layer_name=layer_name,
+        net = self.separate_conv_layer(self._image, 64, 7, 2, rate=None, layer_name=layer_name,
                                        full_layer_name=layer_name)
   
         end_points_collection = self._resnet_scope + '_end_points'

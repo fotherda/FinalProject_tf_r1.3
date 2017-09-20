@@ -7,17 +7,25 @@ Created on 13 Sep 2017
 from davelib.optimise_compression import OptimisationResults, plot_results_from_file, \
                     scatter_plot_results_from_file, plot_compression_profile_from_file
 
-
+from davelib.layer_name import *
 
 def display():
+
+  compressed_layers = get_all_compressible_layers()
+  compressed_layers = remove_all_conv_1x1(compressed_layers)
+  compressed_layers.remove('bbox_pred')
+  Kfrac_init = 0.9
 
 
 
 #   scatter_plot_results_from_file('alt_srch_res_1000_flops_Kfrac0.9')
 #   plot_compression_profile_from_file('opt_results_output_bytes_clsscore')
 #   scatter_plot_results_from_file('opt_results_output_bytes_clsscore')
-  plot_compression_profile_from_file('alt_srch_res')
-  plot_results_from_file('alt_srch_res_comp')
+#   plot_compression_profile_from_file('alt_srch_res_0_6_allLayers_effic_perf', compressed_layers, Kfrac_init=Kfrac_init)
+#   plot_compression_profile_from_file('alt_srch_res_0.9_allLayers', compressed_layers, Kfrac_init=Kfrac_init)
+#   plot_results_from_file('alt_srch_res_comp')
+#   plot_results_from_file('alt_srch_res_0.9_allLayers')
+#   plot_results_from_file('alt_srch_res_0_6_allLayers_effic_perf')
   plot_results_from_file('alt_srch_res')
 #   plot_results_from_file('alt_srch_res_flops_Kfrac0.9_allLayers')
 #   plot_results_from_file('alt_srch_res_1000_flops_Kfrac0.9')

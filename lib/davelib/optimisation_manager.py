@@ -5,9 +5,12 @@ Created on 13 Sep 2017
 '''
 import tensorflow as tf
 import pickle as pi
+import datetime
 
 from davelib.pluripotent_net import PluripotentNet
 from davelib.layer_name import * 
+from davelib.utils import * 
+from davelib.resnet_v1_sep import resnetv1_sep 
 from davelib.compressed_net_description import * 
 from davelib.alternate_search import AlternateSearch
 from davelib.base_net import BaseNetWrapper
@@ -26,6 +29,12 @@ def _expected_delta(compression_step, metric_dict):
     old_metric = metric_dict[layer][K_old]
   return new_metric - old_metric
 
+def filter_layers(layers):
+  layers = remove_all_conv_1x1(layers)
+  layers.remove('bbox_pred')
+#   layers = remove_layers_not_in_blocks(layers, [4])
+  return layers
+  
 class OptimisationManager():
   
   def __init__(self, guide_stats_file_suffix, exp_controller):
@@ -52,9 +61,7 @@ class OptimisationManager():
     use_simple = False #if false use the compound greedy serach
 
     compressed_layers = get_all_compressible_layers()
-    compressed_layers = remove_all_conv_1x1(compressed_layers)
-    compressed_layers.remove('bbox_pred')
-#     compressed_layers = remove_layers_not_in_blocks(compressed_layers, [1,2,4])
+    compressed_layers = filter_layers(compressed_layers)
     print(sorted(compressed_layers))
     comp_layer_label='noconv1x1'
 #     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
@@ -80,12 +87,8 @@ class OptimisationManager():
     self._efficiency_dict = stats_dict[self._efficiency_label] #layer->K
     self._performance_dict = stats_dict[guide_performance_label]
     
-    efficiency_dict_keys = remove_all_conv_1x1(self._efficiency_dict.keys())
-    efficiency_dict_keys.remove('bbox_pred') #must remove or it will always 'win' as has no effect on cls_score
-#     efficiency_dict_keys = remove_layers_not_in_blocks(efficiency_dict_keys, [1,2,4])
+    efficiency_dict_keys = filter_layers(self._efficiency_dict.keys())
     self._full_efficiency_dict = { k: self._efficiency_dict[k] for k in efficiency_dict_keys }
-#     efficiency_dict = remove_all_except_conv2_first_conv1(efficiency_dict)
-
 
     def remove_positive_delta_compressions(efficiency_dict):
       new_dict = {}
@@ -100,12 +103,11 @@ class OptimisationManager():
       return new_dict, removed_layers
 
 
-
     self._efficiency_dict, removed_layers = remove_positive_delta_compressions(self._full_efficiency_dict)
     compressed_layers = list(set(compressed_layers)-set(removed_layers))
     
-    Kfracs = [0.9]
-    self._initial_net_desc = build_net_desc(Kfracs, compressed_layers)
+    initial_Kfrac = 0.9
+    self._initial_net_desc = build_net_desc(initial_Kfrac, compressed_layers)
     
     self._search_algo = AlternateSearch(self._initial_net_desc, 
                                         self._efficiency_dict, 
@@ -152,9 +154,10 @@ class OptimisationManager():
     old_performance_metric = 0
     cum_efficiency_delta = 0 
     opt_results = [] 
+#     max_iter = 1
 
     initial_efficiency_metric, initial_performance_metric = self._run_init_model(compression_stats)
-                                          
+                       
     for itern in range(max_iter):#each iteration compresses 1 layer (a bit more)
       print(str(itern+1), end=' ')
       
@@ -187,9 +190,24 @@ class OptimisationManager():
       
       pi.dump( opt_results, open( 'opt_results_output_bytes_clsscore', "wb" ) )
 
-    print('Final optimised net description:\n' + str(opt_results[-1]._net_desc))
+#     final_mAP = 0
+    num_imgs = 10
+    final_mAP = self._calc_mAP_final_net(opt_results, num_imgs)
+    print('Final optimised net mAP_%d_top%d=%.3f, description:\n%s'%\
+          (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N,final_mAP, str(opt_results[-1]._net_desc)))
     
-    type_labels = ['float_ops_frac_delta','float_ops_count_delta',
-                   'output_bytes_frac_delta','output_bytes_count_delta',
-                   'parameters_frac_delta','parameters_count_delta']
+#     type_labels = ['float_ops_frac_delta','float_ops_count_delta',
+#                    'output_bytes_frac_delta','output_bytes_count_delta',
+#                    'parameters_frac_delta','parameters_count_delta']
 #     compression_stats.plot_data_type_by_Kfracs(type_labels)
+
+  def _calc_mAP_final_net(self, opt_results, num_imgs):
+    net_desc = opt_results[-1]._net_desc
+    
+    mAP = self._exp_controller.mAP_for_net(net_desc, num_imgs)
+    
+    opt_results[-1]._mAP = mAP
+    pi.dump( opt_results, open( 'opt_results_output_bytes_clsscore', "wb" ) )
+    return mAP
+
+    

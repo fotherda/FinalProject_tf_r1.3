@@ -100,20 +100,24 @@ class SeparableNet(object):
     with timer('net_sep.create_architecture'):
       self._net_sep.create_architecture(self._sess, "TEST", 21, tag='default', anchor_scales=[8, 16, 32])
   
+#       show_all_variables(True, self._net_sep.get_scope())
 #     show_all_nodes(True)
   
     restore = False
     if filename:
       save_dir = saved_model_path[:saved_model_path.rfind('/')+1]
+#       save_dir = save_dir + filename
       save_file = save_dir + filename
       restore_file = save_file + '.meta'
       if os.path.isfile(restore_file):
+#       if os.path.isfile(save_dir):
         restore = True
 
     if restore:
-      with timer('Net restore from file'):
+      with timer('separable_net restore from file'):
         saver = tf.train.Saver()
-        saver.restore(sess,tf.train.latest_checkpoint(save_dir))
+        saver.restore(sess, save_file)
+#         saver.restore(sess,tf.train.latest_checkpoint(save_dir))
 #       show_all_variables(True, self._net_sep.get_scope())
     else:    
 #       show_all_variables(True)
@@ -124,8 +128,7 @@ class SeparableNet(object):
       saver.save(sess, save_file)
 
   def _init_resnet(self):
-    self._net_sep = resnetv1_sep(batch_size=1, num_layers=101, 
-                        base_weights_dict=self._base_weights_dict, net_desc=self._net_desc)
+    self._net_sep = resnetv1_sep(batch_size=1, num_layers=101, net_desc=self._net_desc)
     
   def _assign_weights(self):
     with timer('{} init '.format(self.__class__.__name__) ):
@@ -146,23 +149,19 @@ class SeparableNet(object):
 
     saver = tf.train.Saver(restore_var_dict)
     saver.restore(self._sess, self._saved_model_path)
-    
   
   def _assign_trained_weights_to_separable_layers(self):
     all_ops = []
     with tf.variable_scope(self._net_sep.get_scope(), reuse=True):
-      for layer_name in self._net_desc:
+      for layer_name, K in self._net_desc.items():
         source_weights = self._base_weights_dict[layer_name]
-        layer1_name = LayerName(layer_name +'_sep/weights')
+        layer1_name = LayerName(layer_name +'_sep_K%d/weights'%(K))
         dest_weights_1 = tf.get_variable(layer1_name.layer_weights())
         dest_weights_2 = tf.get_variable(layer_name.layer_weights())
-        K = (self._net_desc[layer_name])[0]
         ops = self._get_assign_ops(source_weights, dest_weights_1, dest_weights_2, K)
         all_ops.extend(ops)
           
       self._sess.run(all_ops)
-
-
 
   def _get_assign_ops(self, source_weights, dest_weights_1, dest_weights_2, K, plot=False):
     def plot_kernels():
@@ -279,7 +278,7 @@ class SeparableNet(object):
 #         print('mAP=%f, diff_mean_abs=%f'%(mAP,diff_mean_abs))
 #     else:
 #       print('diff_mean_abs=%f'%diff_mean_abs)
-    if run_profile_stats:
+    if run_profile_stats and len(run_metadata_list)>0:
       profile_stats = ProfileStats(run_metadata_list, tf.get_default_graph(), net_desc)
       compression_stats.set_profile_stats(net_desc, profile_stats, base_profile_stats)
   

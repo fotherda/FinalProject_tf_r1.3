@@ -36,8 +36,8 @@ from davelib.utils import *
 
 class resnetv1_pluri(resnetv1_sep):
     
-  def __init__(self, batch_size, num_layers, base_weights_dict, net_desc, sess=None):
-    resnetv1_sep.__init__(self, batch_size, num_layers, base_weights_dict, net_desc)
+  def __init__(self, batch_size, num_layers, net_desc, sess=None):
+    resnetv1_sep.__init__(self, batch_size, num_layers, net_desc)
     self._sess = sess
     self._K_by_layer_table = tf.contrib.lookup.MutableHashTable(key_dtype=tf.string,
                                            value_dtype=tf.int64, default_value=-1)

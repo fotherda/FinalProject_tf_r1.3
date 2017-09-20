@@ -78,6 +78,17 @@ def get_Ks(layer, K_fractions):
     Ks.append(K)
   return Ks
 
+def get_K(layer, K_frac):
+  Kmax = all_Kmaxs_dict()[layer]
+  K = int(K_frac * Kmax)
+  if K == 0:
+      K = 1 #maximum compression
+  elif K > Kmax:
+    K = Kmax #minimum compression
+  elif K < 0:
+    raise ValueError('K < 0')
+  return K
+
 def get_Kfrac(layer, K):
   Kmax = all_Kmaxs_dict()[layer]
   if K == UNCOMPRESSED:
@@ -89,12 +100,12 @@ def get_Kfrac(layer, K):
 
 def build_net_desc(Kfrac, compressed_layers):
   K_by_layer_dict = {}
-  for layer_name in compressed_layers:
-    Ks = get_Ks(layer_name, Kfrac)
-    if len(Ks) > 0:
-      K_by_layer_dict[layer_name] = Ks[0]
-  net_desc = CompressedNetDescription(K_by_layer_dict)
-  return net_desc
+  if Kfrac!=UNCOMPRESSED:
+    for layer_name in compressed_layers:
+      K = get_K(layer_name, Kfrac)
+      if K != UNCOMPRESSED:
+        K_by_layer_dict[layer_name] = K
+  return CompressedNetDescription(K_by_layer_dict)
 
 def build_pluri_net_desc(Kfracs, compressed_layers):
   Ks_by_layer_dict = {}
@@ -233,16 +244,14 @@ class CompressedNetDescription(dict):
     else:
       return UNCOMPRESSED
     
-  def plot_compression_profile(self):
+  def plot_compression_profile(self, compressed_layers, Kfrac_init):
     xs = []
     ys = []
     layer_names = []
     block_start_idxs = {}
     block_end_idxs = {}  
-
     
-    
-    for i, layer in enumerate( get_all_compressible_layers() ):
+    for i, layer in enumerate( compressed_layers ):
 #     for i, layer in enumerate(sorted(self, key=lambda layer: sort_func(layer))):
       if layer in self:
         K = self[layer]
@@ -295,10 +304,11 @@ class CompressedNetDescription(dict):
         cy = ry + rectangles[r].get_height()/2.0
         ax.annotate(r, (cx, cy), color='k', weight='bold', fontsize=14, ha='center', va='center')
     
-    ax.plot(xs, ys,'o-')
+    ax.plot(xs, [Kfrac_init]*len(xs),'r-', label='initial compression - $K_{frac}=$%.1f'%(Kfrac_init))
+    ax.plot(xs, ys,'o-', label='final compression')
     ax.set_ylim(ymin=ymin)
     ax.set_xlim(xmin=0, xmax=len(xs)+1)
-        
+#     ax.axhline(y=Kfrac_init, color='r')
     ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: '{:.0%}'.format(x)))
 
 #     plt.xticks(xs, layer_names, rotation=45)
@@ -306,6 +316,7 @@ class CompressedNetDescription(dict):
     plt.ylabel('$K_{frac}$', fontsize=18)
     plt.xlabel('layer', fontsize=16)
     plt.subplots_adjust(left=0.05, right=0.99, top=0.98, bottom=0.3)
+    plt.legend(loc=6)
     plt.show()  
      
     
