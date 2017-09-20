@@ -135,7 +135,7 @@ class AlternateSearch():
     if len(self._models_dict) == self._this_cycle_start_idx: #means no new models were tested this cycle
       print(colour.GREEN + self._comp_str() + 'no change')
     else:
-      best_net_desc, objective_val = self.apply_objective
+      best_net_desc, objective_val = self.apply_objective()
       changes = best_net_desc.get_differences(self._best_model)
       assert len(changes)==1, 'Should only be one change in net / cycle' 
       print(colour.GREEN + self._comp_str() + 'change: ' + str(changes[0]))
