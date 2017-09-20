@@ -391,17 +391,11 @@ class ExperimentController(TensorFlowTestCase):
     compressed_layers = get_all_compressible_layers()
     compressed_layers = remove_all_conv_1x1(compressed_layers)
     comp_layer_label='noconv1x1'
-    compressed_layers = remove_layers_after_block3(compressed_layers)
-    comp_layer_label='block1-3'
+#     compressed_layers = remove_layers_after_block3(compressed_layers)
+#     comp_layer_label='block1-3'
 
 #     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
-#     compressed_layers = remove_bottleneck_shortcut_layers(compressed_layers)
-#     compressed_layers = remove_bottleneck_not_unit1(compressed_layers)
-#     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2/weights')]
-#     compressed_layers = [LayerName('rpn_conv/3x3')]
 #     compressed_layers = [LayerName('conv1/weights')]
-#     compressed_layers = [LayerName('block4/unit_3/bottleneck_v1/conv2'), LayerName('rpn_conv/3x3')]
-#     print(compressed_layers)
 #     self._final_layers = []
     
     #     Ks = range(1,11)
@@ -426,13 +420,13 @@ class ExperimentController(TensorFlowTestCase):
       Kfracs_label='0.1-1.0'
 #       Ks = self.get_Ks(layer_name, Kfracs)
 
-      self._sess.close() #restart session to free memory and to reset profile stats
-      tf.reset_default_graph()
-      self._sess = tf.Session(config=self._tfconfig) 
-
       use_plurinet = False
       if use_plurinet:
         net_desc_pluri = build_pluri_net_desc(Kfracs, compressed_layers)  
+
+        self._sess.close() #restart session to free memory and to reset profile stats
+        tf.reset_default_graph()
+        self._sess = tf.Session(config=self._tfconfig) 
         
         filename = 'pluri_net_' + Kfracs_label + '_' + comp_layer_label
 
@@ -443,6 +437,7 @@ class ExperimentController(TensorFlowTestCase):
         
       for Kfrac in Kfracs:
         net_desc = build_net_desc(Kfrac, compressed_layers)  
+
         
         if use_plurinet:
           with timer('PluripotentNet run_performance_analysis', timing_results) as t:
@@ -451,6 +446,10 @@ class ExperimentController(TensorFlowTestCase):
                                              self._base_profile_stats, mAP_base_net, 
                                              num_imgs_list, run_profile_stats=False)
         else:
+          self._sess.close() #restart session to free memory and to reset profile stats
+          tf.reset_default_graph()
+          self._sess = tf.Session(config=self._tfconfig) 
+
           sep_net = SeparableNet(self._base_net, self._sess, self._saved_model_path, 
                                  self._all_comp_weights_dict, self._comp_bn_vars_dict, 
                                  self._comp_bias_vars_dict, net_desc, self._base_variables,
@@ -461,9 +460,6 @@ class ExperimentController(TensorFlowTestCase):
                                            self._final_layers, self._compression_stats, 
                                            self._base_profile_stats, mAP_base_net, 
                                            num_imgs_list, run_profile_stats=False)
-          self._sess.close() #restart session to free memory and to reset profile stats
-          tf.reset_default_graph()
-          self._sess = tf.Session(config=self._tfconfig) 
             
 #         flops = self._compression_stats.get(net_desc, 'float_ops_count_delta')
 #         print('flops delta=%d'%(flops))
