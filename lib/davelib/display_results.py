@@ -6,10 +6,14 @@ Created on 13 Sep 2017
 
 from davelib.optimise_compression import OptimisationResults, plot_results_from_file, \
                     scatter_plot_results_from_file, plot_compression_profile_from_file
+                    
+from davelib.pluri_vs_sep_exp import plot_results
 
 from davelib.layer_name import *
 
 def display():
+  
+  plot_results('timing_results_10rep')
 
   compressed_layers = get_all_compressible_layers()
   compressed_layers = remove_all_conv_1x1(compressed_layers)
@@ -35,7 +39,7 @@ def display():
 #   plot_results_from_file('opt_path_output_bytes_mAP_simple_10')
 #   plot_results_from_file('opt_path_output_bytes_eff_perf')
 #   plot_results_from_file('opt_path_output_bytes_eff_perf_10')
-  plot_results_from_file('opt_results_output_bytes_clsscore_1_0_perf_compress_only')
+#   plot_results_from_file('opt_results_output_bytes_clsscore_1_0_perf_compress_only')
 #   plot_results_from_file('opt_results_output_bytes_clsscore')
   exit()
 

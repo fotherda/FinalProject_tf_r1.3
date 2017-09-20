@@ -91,7 +91,7 @@ class TimingResults():
     self._times_dict[label].append( time )
     
 class timer:
-  def __init__(self, desc='', timing_results=TimingResults()):
+  def __init__(self, desc='', timing_results=None):
     self._t = Timer() 
     self._desc = desc  
     self._timing_results = timing_results
@@ -101,7 +101,8 @@ class timer:
   def __exit__(self, type, value, traceback):
     self._t.toc()
     print(self._desc + ' took: {:.3f}s' .format( self._t.diff))
-    self._timing_results.add_time(self._desc, self._t.diff)
+    if self._timing_results:
+      self._timing_results.add_time(self._desc, self._t.diff)
 
   def elapsed(self):
     return self._t.diff

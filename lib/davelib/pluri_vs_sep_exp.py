@@ -12,6 +12,7 @@ def plot_results(filename):
   
   timing_results = TimingResults(filename)          
 
-#   for label, times in timing_results:
-#     for t in times:
+  for label, times in timing_results._times_dict.items():
+    for t in times:
+      print('%s: %.2f'%(label, t))
       

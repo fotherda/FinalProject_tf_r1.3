@@ -87,7 +87,7 @@ class SeparableNet(object):
   
   def __init__(self, base_net, sess, saved_model_path, base_weights_dict, 
                comp_bn_vars_dict, comp_bias_vars_dict, net_desc, base_variables, 
-               filename=None, timing_results=TimingResults()):
+               filename=None, timing_results=None):
 
     self._base_net = base_net
     self._base_weights_dict = base_weights_dict
@@ -100,7 +100,7 @@ class SeparableNet(object):
     self._timing_results = timing_results
 #     show_all_nodes(True)
     self._init_resnet()
-    with timer('{} create_architecture'.format(self.__class__.__name__), timing_results ) as t:
+    with timer('{} create_architecture'.format(self.__class__.__name__), self._timing_results ) as t:
       self._net_sep.create_architecture(self._sess, "TEST", 21, tag='default', anchor_scales=[8, 16, 32])
   
 #       show_all_variables(True, self._net_sep.get_scope())
