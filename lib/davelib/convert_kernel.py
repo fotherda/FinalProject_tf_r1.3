@@ -420,6 +420,7 @@ class ExperimentController(TensorFlowTestCase):
       Kfracs_label='0.1-1.0'
 #       Ks = self.get_Ks(layer_name, Kfracs)
 
+      
       use_plurinet = False
       if use_plurinet:
         net_desc_pluri = build_pluri_net_desc(Kfracs, compressed_layers)  
@@ -437,7 +438,6 @@ class ExperimentController(TensorFlowTestCase):
         
       for Kfrac in Kfracs:
         net_desc = build_net_desc(Kfrac, compressed_layers)  
-
         
         if use_plurinet:
           with timer('PluripotentNet run_performance_analysis', timing_results) as t:
@@ -471,8 +471,8 @@ class ExperimentController(TensorFlowTestCase):
 def calc_reconstruction_errors(base_net, sess, saved_model_path, tfconfig):
   
   exp_controller = ExperimentController(base_net, sess, saved_model_path, tfconfig, '16')
-#   exp_controller.run_optimise_mgr(max_iter=5000, stats_file_suffix='allLayersKfrac0.1_1.0')
-  exp_controller.run_exp(num_imgs_list=[])
+  exp_controller.run_optimise_mgr(max_iter=10000, stats_file_suffix='allLayersKfrac0.1_1.0')
+#   exp_controller.run_exp(num_imgs_list=[])
 #   exp_controller.run_exp(num_imgs_list=[25])
 #   exp_controller.run_exp(num_imgs_list=[5,10,25,50,100,250,500,1000,2000,4952])
 #   exp_controller.run_split_net_exp(num_imgs=100)

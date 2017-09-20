@@ -198,7 +198,7 @@ class OptimisationManager():
       pi.dump( opt_results, open( 'opt_results_output_bytes_clsscore', "wb" ) )
 
 #     final_mAP = 0
-    num_imgs = 10
+    num_imgs = 100
     final_mAP = self._calc_mAP_final_net(opt_results, num_imgs)
     print('Final optimised net mAP_%d_top%d=%.3f, description:\n%s'%\
           (num_imgs,cfg.TEST.RPN_POST_NMS_TOP_N,final_mAP, str(opt_results[-1]._net_desc)))
