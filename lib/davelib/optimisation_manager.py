@@ -58,11 +58,11 @@ class OptimisationManager():
     self._performance_label = 'diff_mean_cls_score'
     self._perf_metric_increases_with_degradation = True #true for diff_mean_cls_score false for mAP_***
 #     performance_label = 'diff_mean_cls_prob'
-    use_simple = False #if false use the compound greedy serach
+#     use_simple = False #if false use the compound greedy serach
 
     compressed_layers = get_all_compressible_layers()
     compressed_layers = filter_layers(compressed_layers)
-    print(sorted(compressed_layers))
+#     print(sorted(compressed_layers))
     comp_layer_label='noconv1x1'
 #     compressed_layers = keep_only_conv_not_1x1(compressed_layers)
 #     compressed_layers = [LayerName('conv1')]
@@ -106,14 +106,17 @@ class OptimisationManager():
     self._efficiency_dict, removed_layers = remove_positive_delta_compressions(self._full_efficiency_dict)
     compressed_layers = list(set(compressed_layers)-set(removed_layers))
     
-    initial_Kfrac = 0.9
+#     initial_Kfrac = 0.9
+    initial_Kfrac = UNCOMPRESSED
+    compress_only = True
     self._initial_net_desc = build_net_desc(initial_Kfrac, compressed_layers)
     
     self._search_algo = AlternateSearch(self._initial_net_desc, 
                                         self._efficiency_dict, 
                                         self._performance_dict, 
                                         self._perf_metric_increases_with_degradation,
-                                        compressed_layers)
+                                        compressed_layers,
+                                        compress_only)
     
 
   def _get_efficiency_metric(self, net_desc):

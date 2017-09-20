@@ -15,8 +15,10 @@ from collections import OrderedDict
 def change_missing_compressions(template_dict, net_desc):
   #if any K in the net_desc isn't in the template dict change it to the nearest one that is
   K_by_layer_dict = {}
-  for layer, d in template_dict.items():
-    K_net = net_desc[layer]
+  for layer, K_net in net_desc.items():
+#   for layer, d in template_dict.items():
+#     K_net = net_desc[layer]
+    d = template_dict[layer]
     if not K_net in d:
       diffs = {}
       for K in d:
@@ -32,7 +34,7 @@ def change_missing_compressions(template_dict, net_desc):
 class AlternateSearch():
   
   def __init__(self, initial_net_desc, efficiency_dict, performance_dict, perf_metric_increases_with_degradation,
-               compressed_layers):
+               compressed_layers, compress_only):
     initial_net_desc = change_missing_compressions(efficiency_dict, initial_net_desc)
     self._best_model = initial_net_desc
     self._compression_step = None
@@ -44,6 +46,7 @@ class AlternateSearch():
     self._end_of_cycle_results = []
     self._models_dict = OrderedDict({})
     self._this_cycle_start_idx = 0
+    self._compress_only = compress_only
 
   def _get_next_K(self, layer):
     sorted_keys = list(reversed(sorted(self._efficiency_dict[layer].keys())))
@@ -130,10 +133,11 @@ class AlternateSearch():
     with open('alt_srch_res','wb') as f:
       pi.dump(self._end_of_cycle_results, f)
 
-    if self._compressing:
-      self._compressing = False
-    else:
-      self._compressing = True
+    if not self._compress_only:
+      if self._compressing:
+        self._compressing = False
+      else:
+        self._compressing = True
     self._this_cycle_start_idx = len(self._models_dict)
 
   def _comp_str(self):
