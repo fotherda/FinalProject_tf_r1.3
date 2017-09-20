@@ -10,6 +10,7 @@ from davelib.compressed_net_description import *
 from davelib.layer_name import LayerName, sort_func, ordered_layers
 from copy import deepcopy
 from collections import OrderedDict
+from enum import Enum
  
   
 def change_missing_compressions(template_dict, net_desc):
@@ -31,10 +32,15 @@ def change_missing_compressions(template_dict, net_desc):
       K_by_layer_dict[layer] = K_net
   return CompressedNetDescription(K_by_layer_dict)
   
+class ObjectiveType(Enum):
+  EFFICIENCY = 1
+  PERFORMANCE = 2
+  EFFICIENCY_AND_PERFORMANCE = 3  
+  
 class AlternateSearch():
   
   def __init__(self, initial_net_desc, efficiency_dict, performance_dict, perf_metric_increases_with_degradation,
-               compressed_layers, compress_only):
+               compressed_layers, compress_only, objective_type):
     initial_net_desc = change_missing_compressions(efficiency_dict, initial_net_desc)
     self._best_model = initial_net_desc
     self._compression_step = None
@@ -47,6 +53,7 @@ class AlternateSearch():
     self._models_dict = OrderedDict({})
     self._this_cycle_start_idx = 0
     self._compress_only = compress_only
+    self._objective_type = objective_type
 
   def _get_next_K(self, layer):
     sorted_keys = list(reversed(sorted(self._efficiency_dict[layer].keys())))
@@ -115,13 +122,20 @@ class AlternateSearch():
     return best_net_desc, opt_objectives[best_net_desc]
     
     
+  def apply_objective(self):
+    if self._objective_type == ObjectiveType.EFFICIENCY:
+      best_net_desc, objective_val = self._best_effic()
+    elif self._objective_type == ObjectiveType.PERFORMANCE:
+      best_net_desc, objective_val = self._best_perf()
+    elif self._objective_type == ObjectiveType.EFFICIENCY_AND_PERFORMANCE:
+      best_net_desc, objective_val = self._best_perf_for_best_effic()
+    return best_net_desc, objective_val
+    
   def _cycle_completed(self):
     if len(self._models_dict) == self._this_cycle_start_idx: #means no new models were tested this cycle
       print(colour.GREEN + self._comp_str() + 'no change')
     else:
-#       best_net_desc, objective_val = self._best_perf_for_best_effic()
-#       best_net_desc, objective_val = self._best_effic()
-      best_net_desc, objective_val = self._best_perf()
+      best_net_desc, objective_val = self.apply_objective
       changes = best_net_desc.get_differences(self._best_model)
       assert len(changes)==1, 'Should only be one change in net / cycle' 
       print(colour.GREEN + self._comp_str() + 'change: ' + str(changes[0]))

@@ -12,9 +12,11 @@ from davelib.utils import show_all_variables, stdout_redirector, run_test_metric
 class PluripotentNet(SeparableNet):
   
   def __init__(self, base_net, sess, saved_model_path, base_weights_dict, 
-               comp_bn_vars_dict, comp_bias_vars_dict, net_desc_pluri, base_variables, filename):
+               comp_bn_vars_dict, comp_bias_vars_dict, net_desc_pluri, base_variables, 
+               filename, timing_results=None):
     SeparableNet.__init__(self, base_net, sess, saved_model_path, base_weights_dict, 
-               comp_bn_vars_dict, comp_bias_vars_dict, net_desc_pluri, base_variables, filename)
+               comp_bn_vars_dict, comp_bias_vars_dict, net_desc_pluri, base_variables, 
+               filename, timing_results)
 
     
   def _init_resnet(self):

@@ -12,7 +12,7 @@ from davelib.layer_name import *
 from davelib.utils import * 
 from davelib.resnet_v1_sep import resnetv1_sep 
 from davelib.compressed_net_description import * 
-from davelib.alternate_search import AlternateSearch
+from davelib.alternate_search import AlternateSearch, ObjectiveType
 from davelib.base_net import BaseNetWrapper
 from model.config import cfg
 from davelib.compression_stats import CompressionStats
@@ -109,6 +109,9 @@ class OptimisationManager():
 #     initial_Kfrac = 0.9
     initial_Kfrac = UNCOMPRESSED
     compress_only = True
+    objective_type = ObjectiveType.EFFICIENCY_AND_PERFORMANCE
+    
+    
     self._initial_net_desc = build_net_desc(initial_Kfrac, compressed_layers)
     
     self._search_algo = AlternateSearch(self._initial_net_desc, 
@@ -116,7 +119,8 @@ class OptimisationManager():
                                         self._performance_dict, 
                                         self._perf_metric_increases_with_degradation,
                                         compressed_layers,
-                                        compress_only)
+                                        compress_only,
+                                        objective_type)
     
 
   def _get_efficiency_metric(self, net_desc):

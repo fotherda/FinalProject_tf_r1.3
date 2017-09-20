@@ -139,6 +139,7 @@ def plot_results(opt_results_list):
   ax = plt.subplot(2, 1, 1)
   ys = plot_effic
   ax.plot(xs, ys,'o-')
+  plt.gca().invert_yaxis()
   plt.ylabel(res._efficiency_label.replace('_',' '), fontsize=12)
   ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: '{:.0%}'.format(x)))
   ax.text(.6,.85,'Efficiency Metric', ha='center', transform=ax.transAxes, color='r', fontsize=16)
@@ -146,7 +147,9 @@ def plot_results(opt_results_list):
   ax.xaxis.set_major_locator(plt.NullLocator())
   
   ax = plt.subplot(2, 1, 2)
-  ax.plot(xs, plot_act_perf,'o-', label='actual')
+  ys = plot_act_perf
+  ax.plot(xs, ys,'o-', label='actual')
+  plt.gca().invert_yaxis()
 #   ax.plot(xs, plot_exp_perf,'o-', label='expected')
   plt.ylabel(res._perf_label.replace('_',' '), fontsize=12)
   plt.xlabel('model compression iteration \u27f6', fontsize=16)
@@ -155,7 +158,7 @@ def plot_results(opt_results_list):
 #   plt.legend()
   
   ax.set_xlim(xmin=0, xmax=len(xs)+1)
-  ax.set_ylim(ymin=0, ymax=2.0)
+#   ax.set_ylim(ymin=0, ymax=2.0)
   
 #   axins = inset_axes(ax, width="30%", height='40%', loc=4)
 #   axins.plot(xs, plot_act_perf)

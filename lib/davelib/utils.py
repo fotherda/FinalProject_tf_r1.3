@@ -11,13 +11,14 @@ import io
 import os
 import tempfile
 import datetime
-
+import pickle as pi
 
 from contextlib import contextmanager
 from davelib.voc_img_sampler import VOCImgSampler
 from model.test import test_net, test_net_with_sample
 from datasets.factory import get_imdb
 from utils.timer import Timer
+from collections import defaultdict
 
 
 class colour:
@@ -73,9 +74,40 @@ libc = ctypes.CDLL(None)
 c_stdout = ctypes.c_void_p.in_dll(libc, 'stdout')
 c_stderr = ctypes.c_void_p.in_dll(libc, 'stderr')
 
+class TimingResults():
+  def __init__(self, filename=None):
+    if filename:
+      self.load_from_file(filename)
+    else:
+      self._times_dict = defaultdict( list )
+  
+  def load_from_file(self, filename):  
+    self._times_dict = pi.load( open( filename, "rb") ) 
 
+  def save(self, filename):  
+    pi.dump( self._times_dict, open( filename, "wb") ) 
+  
+  def add_time(self, label, time):
+    self._times_dict[label].append( time )
+    
+class timer:
+  def __init__(self, desc='', timing_results=TimingResults()):
+    self._t = Timer() 
+    self._desc = desc  
+    self._timing_results = timing_results
+  def __enter__(self):
+    self._t.tic()
+    return self
+  def __exit__(self, type, value, traceback):
+    self._t.toc()
+    print(self._desc + ' took: {:.3f}s' .format( self._t.diff))
+    self._timing_results.add_time(self._desc, self._t.diff)
+
+  def elapsed(self):
+    return self._t.diff
+    
 @contextmanager
-def timer(desc=''):
+def timer_func(desc=''):
   _t = Timer()
   _t.tic()
   yield

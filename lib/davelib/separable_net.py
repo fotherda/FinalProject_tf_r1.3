@@ -16,7 +16,8 @@ from davelib.layer_name import LayerName
 from tensorflow.python.framework import ops
 from collections import OrderedDict
 from davelib.profile_stats import ProfileStats
-from davelib.utils import show_all_variables, show_all_nodes, stdout_redirector, run_test_metric, timer
+from davelib.utils import show_all_variables, show_all_nodes, stdout_redirector, \
+                          run_test_metric, timer, TimingResults
 from utils.timer import Timer
 
 
@@ -85,7 +86,8 @@ def plot_filters(plots_dict, n):
 class SeparableNet(object):
   
   def __init__(self, base_net, sess, saved_model_path, base_weights_dict, 
-               comp_bn_vars_dict, comp_bias_vars_dict, net_desc, base_variables, filename=None):
+               comp_bn_vars_dict, comp_bias_vars_dict, net_desc, base_variables, 
+               filename=None, timing_results=TimingResults()):
 
     self._base_net = base_net
     self._base_weights_dict = base_weights_dict
@@ -95,9 +97,10 @@ class SeparableNet(object):
     self._sess = sess
     self._saved_model_path = saved_model_path
     self._base_variables = base_variables
+    self._timing_results = timing_results
 #     show_all_nodes(True)
     self._init_resnet()
-    with timer('net_sep.create_architecture'):
+    with timer('{} create_architecture'.format(self.__class__.__name__), timing_results ) as t:
       self._net_sep.create_architecture(self._sess, "TEST", 21, tag='default', anchor_scales=[8, 16, 32])
   
 #       show_all_variables(True, self._net_sep.get_scope())
@@ -114,7 +117,7 @@ class SeparableNet(object):
         restore = True
 
     if restore:
-      with timer('separable_net restore from file'):
+      with timer('{} restore from file'.format(self.__class__.__name__), timing_results ):
         saver = tf.train.Saver()
         saver.restore(sess, save_file)
 #         saver.restore(sess,tf.train.latest_checkpoint(save_dir))
@@ -131,7 +134,7 @@ class SeparableNet(object):
     self._net_sep = resnetv1_sep(batch_size=1, num_layers=101, net_desc=self._net_desc)
     
   def _assign_weights(self):
-    with timer('{} init '.format(self.__class__.__name__) ):
+    with timer('{} assign_weights'.format(self.__class__.__name__), self._timing_results ):
       self._assign_trained_weights_to_unchanged_layers()
       self._assign_trained_weights_to_separable_layers()  
 
@@ -199,11 +202,8 @@ class SeparableNet(object):
     save_file = save_dir + dest_weights_2.name.replace('/','|').replace(':','_') + '_K'+str(K)
 
     if os.path.isfile(save_file): #restore from file
-      _t = Timer()
-      _t.tic()
+#       with timer('Net restore from file'):
       M1, M2 = pi.load( open( save_file, "rb" ) )
-      _t.toc()
-      print('Net restore from file took: {:.3f}s' .format( _t.diff))
     else: #calc and then save
       M1,M2 = calc_weights()  
       pi.dump( (M1,M2), open( save_file, "wb" ) )
